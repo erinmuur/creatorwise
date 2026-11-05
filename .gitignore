@@ -1,0 +1,15 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.db
+*.sqlite3
+.DS_Store
+instance/
+
+data/*
+!data/.gitkeep
+
+.claude/settings.local.json

@@ -1,0 +1,4 @@
+flask
+flask-sqlalchemy
+python-dotenv
+gunicorn==23.0.0

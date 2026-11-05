@@ -1,0 +1,16 @@
+version: 1
+name: "creatorwise"
+description: "creatorwise web app"
+
+services:
+  web:
+    app:
+      build:
+        dockerfile: "Dockerfile"
+        context: "."
+    expose: true
+    env:
+      DATABASE_URL: "sqlite:////app/data/creatorwise.db"
+    source_mounts:
+      - source: "./data"
+        target: "/app/data"

@@ -4,7 +4,7 @@ from datetime import date
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 
 from models import (
     PLATFORMS,
@@ -12,10 +12,12 @@ from models import (
     REFERRAL_WINDOW_DAYS,
     Campaign,
     Creator,
+    InboxItem,
     Participation,
     UgcPiece,
     db,
 )
+import inbox as inbox_lib
 
 app = Flask(__name__)
 
@@ -83,6 +85,7 @@ def inject_globals():
         "platforms": PLATFORMS,
         "referral_window": REFERRAL_WINDOW_DAYS,
         "today": date.today(),
+        "inbox_pending": InboxItem.query.filter_by(status="pending").count(),
     }
 
 
@@ -196,6 +199,87 @@ def ugc_detail(piece_id):
     return render_template(
         "ugc_detail.html", piece=piece, posts=posts, snapshots=snapshots
     )
+
+
+@app.route("/inbox")
+def inbox():
+    pending = InboxItem.query.filter_by(status="pending").order_by(
+        InboxItem.received_on.desc()
+    ).all()
+    recent = InboxItem.query.filter(InboxItem.status != "pending").order_by(
+        InboxItem.id.desc()
+    ).limit(20).all()
+    return render_template(
+        "inbox.html",
+        pending=pending,
+        recent=recent,
+        all_campaigns=Campaign.query.order_by(Campaign.starts_on.desc()).all(),
+    )
+
+
+@app.route("/inbox/<int:item_id>/accept", methods=["POST"])
+def inbox_accept(item_id):
+    item = db.session.get(InboxItem, item_id) or abort(404)
+    campaign_id = request.form.get("campaign_id", type=int) or item.campaign_id
+    try:
+        inbox_lib.accept(item, campaign_id=campaign_id)
+    except ValueError as exc:
+        return redirect(url_for("inbox", error=str(exc)))
+    return redirect(url_for("inbox"))
+
+
+@app.route("/inbox/<int:item_id>/dismiss", methods=["POST"])
+def inbox_dismiss(item_id):
+    item = db.session.get(InboxItem, item_id) or abort(404)
+    item.status = "dismissed"
+    db.session.commit()
+    return redirect(url_for("inbox"))
+
+
+@app.route("/api/ingest", methods=["POST"])
+def api_ingest():
+    """Receive scanned emails from the periodic inbox job.
+
+    Fails closed: with no INGEST_TOKEN configured the endpoint is disabled
+    outright, so a public deployment can't be written to by strangers.
+    """
+    expected = os.environ.get("INGEST_TOKEN")
+    if not expected:
+        return jsonify(error="ingest disabled: INGEST_TOKEN not set"), 503
+    if request.headers.get("Authorization") != f"Bearer {expected}":
+        return jsonify(error="unauthorized"), 401
+
+    payload = request.get_json(silent=True) or {}
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return jsonify(error="expected {\"messages\": [...]}"), 400
+
+    queued, skipped, duplicates = 0, 0, 0
+    for m in messages:
+        if not m.get("message_id"):
+            skipped += 1
+            continue
+        received = m.get("received_on")
+        if isinstance(received, str):
+            try:
+                received = date.fromisoformat(received[:10])
+            except ValueError:
+                received = None
+        item, created = inbox_lib.ingest_message(
+            message_id=m["message_id"],
+            sender=m.get("sender"),
+            subject=m.get("subject"),
+            body=m.get("body") or "",
+            received_on=received,
+        )
+        if created:
+            queued += 1
+        elif item is not None:
+            duplicates += 1
+        else:
+            skipped += 1
+
+    return jsonify(queued=queued, duplicates=duplicates, skipped_no_links=skipped)
 
 
 @app.route("/healthz")

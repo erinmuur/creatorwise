@@ -14,6 +14,7 @@
         <a href="{{ url_for('index') }}" class="{{ 'is-active' if request.endpoint == 'index' }}">Overview</a>
         <a href="{{ url_for('campaigns') }}" class="{{ 'is-active' if request.endpoint in ('campaigns', 'campaign_detail') }}">Campaigns</a>
         <a href="{{ url_for('creators') }}" class="{{ 'is-active' if request.endpoint in ('creators', 'creator_detail') }}">Creators</a>
+        <a href="{{ url_for('inbox') }}" class="{{ 'is-active' if request.endpoint == 'inbox' }}">Inbox{% if inbox_pending %} <span class="nav-count">{{ inbox_pending }}</span>{% endif %}</a>
       </nav>
     </div>
   </header>

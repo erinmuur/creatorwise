@@ -315,6 +315,58 @@ class PlatformPost(db.Model):
         return round(100 * self.engagement / self.views, 1)
 
 
+class InboxItem(db.Model):
+    """A creator email that looks like a content submission, awaiting review.
+
+    Populated by the periodic inbox scan (see inbox.py). Kept as a queue rather
+    than writing straight through to UgcPiece, because sender-to-creator
+    matching is a guess and a wrong guess silently corrupts campaign numbers.
+    Accepting one is a single click.
+    """
+
+    __tablename__ = "inbox_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.String(512), unique=True, nullable=False)
+    sender = db.Column(db.String(254))
+    subject = db.Column(db.String(512))
+    received_on = db.Column(db.Date)
+
+    links_json = db.Column(db.Text)          # JSON [[platform, url], ...]
+
+    creator_id = db.Column(db.Integer, db.ForeignKey("creators.id"))
+    match_note = db.Column(db.String(128))   # how the creator was matched
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id"))
+    campaign_note = db.Column(db.String(128))
+
+    status = db.Column(db.String(16), default="pending")  # pending|accepted|dismissed
+    ugc_piece_id = db.Column(db.Integer, db.ForeignKey("ugc_pieces.id"))
+
+    creator = db.relationship("Creator", lazy="selectin")
+    campaign = db.relationship("Campaign", lazy="selectin")
+    created_piece = db.relationship("UgcPiece", lazy="selectin")
+
+    @property
+    def links(self):
+        import json
+
+        if not self.links_json:
+            return []
+        try:
+            return [tuple(x) for x in json.loads(self.links_json)]
+        except ValueError:
+            return []
+
+    @property
+    def platforms(self):
+        return sorted({p for p, _ in self.links})
+
+    @property
+    def needs_attention(self):
+        """Can't be accepted as-is — missing a creator or a campaign."""
+        return not (self.creator_id and self.campaign_id)
+
+
 class ReferralSnapshot(db.Model):
     """Referrals attributed to a piece, measured some number of days after posting.
 

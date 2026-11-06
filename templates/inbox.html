@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Inbox · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1 class="page-title">Inbox</h1>
+  <p class="page-sub">Content links found in email, waiting to be confirmed.</p>
+</div>
+
+{% if request.args.get('error') %}
+<div class="panel" style="margin-bottom: var(--space-16)">
+  <p style="margin:0; color: var(--feedback-error)">{{ request.args.get('error') }}</p>
+</div>
+{% endif %}
+
+{% if pending %}
+<div class="card-grid">
+  {% for item in pending %}
+  <div class="panel">
+    <p class="eyebrow" style="margin-bottom: var(--space-8)">{{ item.received_on | shortdate }}</p>
+    <h3 class="campaign-name" style="font-size:14px">{{ item.subject or 'No subject' }}</h3>
+    <p class="row-sub" style="margin: var(--space-4) 0 var(--space-16)">{{ item.sender }}</p>
+
+    <div style="margin-bottom: var(--space-16)">
+      {% for platform, url in item.links %}
+      <div style="margin-bottom: var(--space-4)">
+        <span class="badge badge-platform">{{ platform_labels.get(platform, platform) }}</span>
+        <a href="{{ url }}" style="font-size:12px; word-break:break-all">{{ url | truncate(54) }}</a>
+      </div>
+      {% endfor %}
+    </div>
+
+    <dl class="kv" style="margin-bottom: var(--space-16)">
+      <dt>Creator</dt>
+      <dd>
+        {% if item.creator %}
+          <a href="{{ url_for('creator_detail', creator_id=item.creator.id) }}">{{ item.creator.name }}</a>
+          <div class="row-sub">Matched on {{ item.match_note }}</div>
+        {% else %}
+          <span style="color: var(--feedback-error)">No match</span>
+          <div class="row-sub">{{ item.match_note }}</div>
+        {% endif %}
+      </dd>
+    </dl>
+
+    <form method="post" action="{{ url_for('inbox_accept', item_id=item.id) }}" style="display:flex; gap: var(--space-8); align-items:center; flex-wrap:wrap">
+      <select name="campaign_id" class="chip" style="border:none; padding: var(--space-8) var(--space-12)">
+        {% for c in all_campaigns %}
+        <option value="{{ c.id }}" {{ 'selected' if c.id == item.campaign_id }}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-primary" {{ 'disabled' if not item.creator }}>Add</button>
+    </form>
+    <form method="post" action="{{ url_for('inbox_dismiss', item_id=item.id) }}" style="margin-top: var(--space-8)">
+      <button type="submit" class="btn-quiet">Dismiss</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="panel"><p class="empty" style="padding:0">Nothing waiting. New creator emails show up here after the next scan.</p></div>
+{% endif %}
+
+{% if recent %}
+<div class="section">
+  <h2 class="section-title">Handled</h2>
+  <div class="panel panel-flush">
+    <table>
+      <thead><tr><th>Email</th><th>Status</th><th>Result</th></tr></thead>
+      <tbody>
+        {% for item in recent %}
+        <tr>
+          <td>
+            <div class="row-name">{{ item.subject or 'No subject' }}</div>
+            <div class="row-sub">{{ item.sender }} · {{ item.received_on | shortdate }}</div>
+          </td>
+          <td><span class="badge badge-{{ 'delivered' if item.status == 'accepted' else 'no_show' }}">{{ item.status | capitalize }}</span></td>
+          <td>
+            {% if item.created_piece %}
+            <a href="{{ url_for('ugc_detail', piece_id=item.created_piece.id) }}">{{ item.created_piece.title }}</a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

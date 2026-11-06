@@ -383,3 +383,49 @@ class ReferralSnapshot(db.Model):
     measured_at = db.Column(db.Date)
 
     piece = db.relationship("UgcPiece", back_populates="referral_snapshots")
+
+
+class ScanRun(db.Model):
+    """One attempt to read the inbox.
+
+    Recorded whether it succeeded or not, and surfaced in /inbox. This is
+    deliberate: the reason the scheduled Claude job was abandoned is that it
+    failed invisibly — contextone keeps no transcript for periodic sessions and
+    reports `success` for a job that did nothing. A scanner you can't observe is
+    worse than no scanner, so every run leaves a row.
+
+    The `started_at` column doubles as the lock. Gunicorn runs more than one
+    worker, each with its own scheduler thread; a worker claims the next scan by
+    inserting a row inside a transaction and checking it won.
+    """
+
+    __tablename__ = "scan_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    started_at = db.Column(db.DateTime, nullable=False, index=True)
+    finished_at = db.Column(db.DateTime)
+    # scheduled | manual | cli
+    trigger = db.Column(db.String(16), nullable=False, default="scheduled")
+    # running | ok | error
+    status = db.Column(db.String(16), nullable=False, default="running")
+    messages_seen = db.Column(db.Integer, default=0)
+    queued = db.Column(db.Integer, default=0)
+    duplicates = db.Column(db.Integer, default=0)
+    skipped = db.Column(db.Integer, default=0)
+    error = db.Column(db.Text)
+
+    @property
+    def duration_seconds(self):
+        if not (self.started_at and self.finished_at):
+            return None
+        return (self.finished_at - self.started_at).total_seconds()
+
+    @property
+    def summary(self):
+        if self.status == "running":
+            return "running…"
+        if self.status == "error":
+            return (self.error or "failed").splitlines()[0][:140]
+        if self.queued:
+            return f"{self.queued} queued from {self.messages_seen} scanned"
+        return f"nothing new in {self.messages_seen} scanned"

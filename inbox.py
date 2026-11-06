@@ -1,13 +1,20 @@
 """Turn creator emails into reviewable dashboard entries.
 
-The app can't read email itself — the Superhuman connector is a Claude-side
-tool, not an API this container can call. So the flow is:
+Mail reaches here two ways, and both end in the same place — a *pending*
+InboxItem that Erin accepts or dismisses in /inbox:
 
-    periodic Claude job (has the connector)
-        -> scans erin@readwise.io for creator emails
-        -> POSTs {sender, subject, body, ...} to /api/ingest
-        -> this module extracts links, matches a creator, queues for review
-        -> Erin accepts in /inbox, which creates the UgcPiece + PlatformPosts
+    scan.py (the scheduler, every 24h)
+        -> gmail.py reads erin@readwise.io over the Gmail API
+        -> ingest_message
+
+    POST /api/ingest (bearer token)
+        -> ingest_message
+
+The Gmail path is the live one. The endpoint is kept because it's how the
+scanner was originally fed — by a periodic Claude job using the Superhuman
+connector — and it's still the easiest way to replay a message by hand. That
+job is gone: connectors are bound to an interactive Claude session, so a
+scheduled cloud job has no path to one.
 
 Everything here is pure except `ingest_message`, so the parsing and matching can
 be tested without a database or a live inbox.

@@ -18,6 +18,24 @@ Then open http://localhost:5000. `GET /healthz` returns `{"status": "ok"}`.
 Local runs use a SQLite database at `data/creatorwise.db`, created automatically on
 first boot. The `data/` directory is gitignored except for `.gitkeep`.
 
+## Tests
+
+```bash
+./venv/bin/python tests/test_scan.py && ./venv/bin/python tests/test_gmail_http.py
+```
+
+No network and no credentials needed — the Gmail tests run against a fake Google
+on loopback.
+
+## The mail scanner
+
+creatorwise reads `erin@readwise.io` over the Gmail API every 24 hours and
+queues anything that looks like a creator content submission in `/inbox` for
+review. Nothing is added to the dashboard without being accepted there.
+
+It stays dormant until the Gmail credentials exist — `/inbox` says so, and
+nothing contacts Google. Setup: **[docs/gmail-setup.md](docs/gmail-setup.md)**.
+
 ## Deploying
 
 Contextone builds from the `Dockerfile` and clones the repo **from GitHub**, so your

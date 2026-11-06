@@ -115,16 +115,25 @@ contextone infra deploy --file .contextone/infra/app.yml --project creatorwise -
 
 Does the token work? This reads the account profile, no mail:
 
+`contextone env get` prints a `KEY=value` line *and* a JSON line, so pull the
+value out properly rather than piping the last line straight through:
+
 ```bash
-curl -s -X POST http://creatorwise.infra.contextone.dev/api/gmail/check -H "Authorization: Bearer $(contextone env get --key INGEST_TOKEN)" | python3 -m json.tool
+TOKEN=$(contextone env get --key INGEST_TOKEN | tail -1 | python3 -c 'import sys,json; print(json.load(sys.stdin)["value"])')
 ```
 
-Expect `"account": "erin@readwise.io"`.
+```bash
+curl -s -X POST http://creatorwise.infra.contextone.dev/api/gmail/check -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+Expect `"account": "erin@readwise.io"`. A `401 unauthorized` means `$TOKEN`
+didn't come out right; a `503` means one of the three GMAIL_* values is still
+the placeholder.
 
 Then scan for real — either press **Scan now** on `/inbox`, or:
 
 ```bash
-curl -s -X POST http://creatorwise.infra.contextone.dev/api/scan -H "Authorization: Bearer $(contextone env get --key INGEST_TOKEN)" | python3 -m json.tool
+curl -s -X POST http://creatorwise.infra.contextone.dev/api/scan -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 ```
 
 `/inbox` then shows the scanner panel with the last run, a run history, and

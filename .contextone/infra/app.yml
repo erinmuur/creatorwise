@@ -20,9 +20,14 @@ services:
       # Keep at "0" until this subdomain has a working certificate — a Secure
       # cookie is never sent over plain HTTP, so login would fail silently.
       SESSION_COOKIE_SECURE: "0"
-      # Bearer token for /api/ingest, used by the daily inbox scan job.
-      # Without it that endpoint returns 503 and accepts nothing.
+      # Bearer token for /api/ingest and /api/scan. Without it both endpoints
+      # return 503 and accept nothing.
       INGEST_TOKEN: "${ENV.INGEST_TOKEN}"
+      # Gmail scanner credentials. Blank until the OAuth client exists, which
+      # leaves the scanner dormant rather than failing. See docs/gmail-setup.md.
+      GMAIL_CLIENT_ID: "${ENV.GMAIL_CLIENT_ID}"
+      GMAIL_CLIENT_SECRET: "${ENV.GMAIL_CLIENT_SECRET}"
+      GMAIL_REFRESH_TOKEN: "${ENV.GMAIL_REFRESH_TOKEN}"
     source_mounts:
       - source: "./data"
         target: "/app/data"

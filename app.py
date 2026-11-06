@@ -19,6 +19,8 @@ from models import (
 )
 import inbox as inbox_lib
 import auth
+import gmail
+import scan as scan_lib
 
 app = Flask(__name__)
 
@@ -53,6 +55,10 @@ with app.app_context():
 
         _seed.seed()
         app.logger.warning("seeded sample data (SEED_SAMPLE_DATA=1)")
+
+# Start the Gmail inbox scanner. No-op unless GMAIL_CLIENT_ID / _SECRET /
+# _REFRESH_TOKEN are all set, and only one gunicorn worker wins the timer.
+scan_lib.start(app)
 
 
 # --- formatting helpers -------------------------------------------------------
@@ -221,6 +227,7 @@ def inbox():
         pending=pending,
         recent=recent,
         all_campaigns=Campaign.query.order_by(Campaign.starts_on.desc()).all(),
+        scanner=scan_lib.status(),
     )
 
 
@@ -241,6 +248,58 @@ def inbox_dismiss(item_id):
     item.status = "dismissed"
     db.session.commit()
     return redirect(url_for("inbox"))
+
+
+@app.route("/inbox/scan", methods=["POST"])
+def inbox_scan():
+    """The "Scan now" button. Synchronous — a scan is a handful of API calls."""
+    if not gmail.is_configured():
+        return redirect(url_for("inbox", error="Gmail is not configured"))
+    run = scan_lib.run_scan(trigger="manual")
+    return redirect(url_for("inbox", scanned=run.id))
+
+
+@app.route("/api/scan", methods=["POST"])
+def api_scan():
+    """Trigger a scan from outside — for an external cron, or to test credentials.
+
+    Shares INGEST_TOKEN with /api/ingest: both are the same privilege (write to
+    the review queue), so a second secret would be bookkeeping without a benefit.
+    """
+    expected = os.environ.get("INGEST_TOKEN")
+    if not expected:
+        return jsonify(error="scan disabled: INGEST_TOKEN not set"), 503
+    if request.headers.get("Authorization") != f"Bearer {expected}":
+        return jsonify(error="unauthorized"), 401
+    if not gmail.is_configured():
+        return jsonify(error="gmail not configured: GMAIL_* env vars missing"), 503
+
+    run = scan_lib.run_scan(trigger="manual")
+    return jsonify(
+        status=run.status,
+        messages_seen=run.messages_seen,
+        queued=run.queued,
+        duplicates=run.duplicates,
+        skipped=run.skipped,
+        error=run.error,
+    ), (200 if run.status == "ok" else 502)
+
+
+@app.route("/api/gmail/check", methods=["POST"])
+def api_gmail_check():
+    """Does the refresh token work? Reads the account profile, no mail."""
+    expected = os.environ.get("INGEST_TOKEN")
+    if not expected:
+        return jsonify(error="disabled: INGEST_TOKEN not set"), 503
+    if request.headers.get("Authorization") != f"Bearer {expected}":
+        return jsonify(error="unauthorized"), 401
+    if not gmail.is_configured():
+        return jsonify(configured=False,
+                       error="GMAIL_CLIENT_ID / _SECRET / _REFRESH_TOKEN not all set"), 503
+    try:
+        return jsonify(configured=True, account=gmail.check(), query=gmail.query())
+    except gmail.GmailError as exc:
+        return jsonify(configured=True, error=str(exc)), 502
 
 
 @app.route("/api/ingest", methods=["POST"])

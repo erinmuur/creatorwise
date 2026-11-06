@@ -1,91 +1,50 @@
 <!--
-STATUS: not scheduled as of 2026-11-06.
+SUPERSEDED — 2026-11-06.
 
-This ran once as contextone periodic job 97 and did not work: it reported
-success, produced an empty transcript, and queued nothing, despite qualifying
-mail sitting inside its 3-day window. The likely cause is that a headless
-periodic session does not inherit the Superhuman connector, which is bound to
-an interactive Claude session — so the job had no way to read the mailbox, and
-failed silently rather than erroring.
+This prompt was written for a contextone periodic job that would read
+erin@readwise.io with the Superhuman connector and POST matching mail to
+/api/ingest. It cannot work, and the job has been deleted.
 
-The job was deleted rather than left firing daily for nothing (the contextone
-CLI has no disable, only create/run/delete).
+Why: a Claude connector is bound to an interactive session. contextone's
+.mcp.json ships only its own MCP server, which is why the other periodic jobs
+(New Relic, Sentry, Slack, Readwise DB) run fine — none of them needs a
+connector. Two cloud sessions confirmed it empirically, both producing no
+output at all and never reaching the endpoint.
 
-The dashboard side IS verified working: POSTing a real creator email to
-/api/ingest with the production token parses the links and queues the item for
-review. Only the "something reads the mailbox on a schedule" half is missing.
+Replaced by the app reading Gmail directly: gmail.py + scan.py, scheduled
+in-process. See docs/gmail-setup.md.
 
-To recreate once connector access is solved:
-
-  bash "$HOME/.claude/plugins/cache/context-one-plugin/contextone/<version>/scripts/periodic.sh" create \
-    --name "creatorwise-inbox-scan" \
-    --schedule "0 13 * * *" \
-    --timeout-seconds 900 \
-    --workspace-path creatorwise \
-    --prompt "$(cat jobs/daily-inbox-scan.md)"
-
-Schedule is UTC (13:00 UTC = 8am ET). Requires INGEST_TOKEN in contextone env,
-which is already set.
+Kept for the record, and because the matching rules below are still the right
+description of what a submission looks like.
 -->
 
-Scan erin@readwise.io for creator content submissions and send them to the
-creatorwise dashboard for review.
+# Daily inbox scan (historical)
 
-READ-ONLY. Do not send, reply to, forward, draft, archive, label, delete, or
-modify any email or calendar event. Do not contact any creator. The only write
-this job performs is the HTTP POST described below.
+Scan erin@readwise.io for creator content submissions and queue them in
+creatorwise for review.
 
-Steps:
+## What counts as a submission
 
-1. Call list_accounts to confirm erin@readwise.io is linked. If it is not,
-   stop and report that — do not substitute another account.
+An email is a content submission when it contains at least one link to a
+*specific post* on Instagram, TikTok or YouTube:
 
-2. Find candidate messages from the last 3 days. Run list_threads several
-   times with these body_contains values, each with limit 50:
-     - "instagram.com"
-     - "tiktok.com"
-     - "youtube.com"
-     - "youtu.be"
-   Use start_date = 3 days ago. The overlap with previous runs is deliberate:
-   the dashboard de-duplicates on message_id, so re-sending is harmless and
-   missing a message is not.
+- Instagram: `/p/`, `/reel/`, `/reels/` or `/tv/` — not a bare `/handle`
+- TikTok: `/video/` in the path, or a `vm.`/`vt.`/`/t/` short link — not a bare
+  `/@handle`
+- YouTube: `/watch`, `/shorts`, `/v/`, `/live` or a `youtu.be` link — not a
+  channel
 
-3. For each thread, use get_thread to read the full message bodies. Keep only
-   messages where ALL of these hold:
-     - the sender is NOT erin@readwise.io or any @readwise.io address
-       (her own replies quote the creator's links and would double-count)
-     - the message body actually contains a link to instagram.com, tiktok.com,
-       youtube.com or youtu.be
-   Do NOT try to filter out platform notification mail yourself, and do NOT
-   try to decide which links are real posts — the dashboard does both, and
-   doing it here would create two places where that logic can drift.
+Profile and channel links are not submissions.
 
-4. POST the messages to the dashboard, in batches of at most 25:
+## What to exclude
 
-   curl -sS -X POST http://creatorwise.infra.contextone.dev/api/ingest \
-     -H "Authorization: Bearer $INGEST_TOKEN" \
-     -H "Content-Type: application/json" \
-     -d '{"messages":[ ... ]}'
+Platform notification mail, which is full of real content links and never a
+submission. TikTok alone sends a steady stream of "X posted:" and "X mentioned
+you" mails from `@service.tiktok.com`. Also skip `noreply@`, `notifications@`
+and anything from `mail.instagram.com` or `facebookmail.com`.
 
-   Each message object is:
-     {"message_id": "<the message_id from Superhuman>",
-      "sender": "<from address only, no display name>",
-      "subject": "<subject>",
-      "body": "<full plain-text body>",
-      "received_on": "<YYYY-MM-DD>"}
+## Where it goes
 
-   Use plain http://, not https:// — this subdomain's TLS certificate is
-   currently broken, so https will fail certificate verification.
-
-   $INGEST_TOKEN is injected into this session from contextone env. If it is
-   empty, stop and report that rather than posting without it.
-
-5. The response looks like {"queued":N,"duplicates":N,"skipped_no_links":N}.
-   Report the totals across all batches, and list the sender and subject of
-   each newly queued message. A 503 means INGEST_TOKEN is not set on the
-   dashboard; a 401 means this job's token does not match it.
-
-Erin reviews and confirms each queued item at
-http://creatorwise.infra.contextone.dev/inbox — nothing is added to a campaign
-without her clicking Add, so err toward sending a message rather than skipping
-it.
+Nothing is published automatically. Each message becomes a pending item in
+`/inbox` showing the extracted links, the creator it matched and how, and the
+campaign guessed from the date. Erin accepts or dismisses it.

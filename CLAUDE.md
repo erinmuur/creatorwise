@@ -13,6 +13,12 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | path | purpose |
 |---|---|
 | `app.py` | Flask app, routes, DB wiring |
+| `inbox.py` | email -> reviewable InboxItem (link extraction, creator matching) |
+| `gmail.py` | Gmail API client, stdlib only — reads erin@readwise.io |
+| `scan.py` | one scan + the in-process scheduler |
+| `tests/` | `python3 tests/test_scan.py`, `python3 tests/test_gmail_http.py` |
+| `tools/gmail_auth.py` | one-off: mint the Gmail refresh token (run it yourself) |
+| `docs/gmail-setup.md` | the Google Cloud steps only Erin can do |
 | `models.py` | SQLAlchemy models (`db` lives here) |
 | `templates/` | Jinja templates |
 | `static/` | CSS and assets |
@@ -66,6 +72,30 @@ These have bitten this setup before:
    ```
    Do NOT `destroy` the instance to fix this — it loses the volume and risks
    rate-limiting the subdomain for days.
+
+## The mail scanner
+
+The app reads `erin@readwise.io` itself over the Gmail API, every 24h, from a
+background thread in the web process. Mail becomes a *pending* item in `/inbox`;
+nothing is published without Erin accepting it.
+
+- Dormant unless `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` and
+  `GMAIL_REFRESH_TOKEN` are all set to real values. They're currently seeded
+  with the literal `not-configured`, which `gmail.py` reads as unset — contextone
+  rejects a blank env value, and `app.yml` has to reference something.
+- Setup is `docs/gmail-setup.md`. The Google Cloud half needs Erin.
+- **Don't try to schedule this as a periodic job.** It was built that way first
+  and cannot work: a Claude connector is bound to an interactive session, and
+  contextone's `.mcp.json` ships only its own MCP server. Two cloud sessions
+  confirmed it, producing no output at all. (Verified 2026-11-06.)
+- Every run writes a `ScanRun` row, shown in `/inbox`, success or failure. This
+  is deliberate — contextone keeps **no transcript** for periodic sessions, their
+  `status` is stale (sessions from a week ago still read `running`), and the job
+  list reported `success` for a job that did nothing. Don't rely on contextone to
+  tell you a scheduled thing is working.
+- One gunicorn worker owns the timer, decided by an `flock` on
+  `data/scanner.lock`. Don't add a second scheduler.
+- Failed runs retry after 1h, not 24h.
 
 ## Adding a model
 

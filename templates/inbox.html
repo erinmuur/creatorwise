@@ -13,6 +13,62 @@
 </div>
 {% endif %}
 
+<div class="panel" style="margin-bottom: var(--space-24)">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: var(--space-16); flex-wrap:wrap">
+    <div>
+      <p class="eyebrow" style="margin-bottom: var(--space-4)">Mail scanner</p>
+      {% if scanner.enabled %}
+      <p style="margin:0">
+        Reading <strong>erin@readwise.io</strong> every {{ scanner.interval_hours }}h.
+      </p>
+      {% elif scanner.configured %}
+      <p style="margin:0">Configured but switched off (<code>GMAIL_SCAN_ENABLED=0</code>).</p>
+      {% else %}
+      <p style="margin:0">Not connected yet — no Gmail credentials set.</p>
+      <p class="row-sub" style="margin-top: var(--space-4)">
+        Add <code>GMAIL_CLIENT_ID</code>, <code>GMAIL_CLIENT_SECRET</code> and
+        <code>GMAIL_REFRESH_TOKEN</code>. Steps are in <code>docs/gmail-setup.md</code>.
+      </p>
+      {% endif %}
+
+      {% if scanner.last %}
+      <p class="row-sub" style="margin-top: var(--space-8)">
+        Last run {{ scanner.last.started_at.strftime('%b %-d, %H:%M') }} UTC ·
+        {% if scanner.last.status == 'error' %}
+        <span style="color: var(--feedback-error)">{{ scanner.last.summary }}</span>
+        {% else %}{{ scanner.last.summary }}{% endif %}
+      </p>
+      {% elif scanner.configured %}
+      <p class="row-sub" style="margin-top: var(--space-8)">Hasn't run yet.</p>
+      {% endif %}
+    </div>
+
+    {% if scanner.configured %}
+    <form method="post" action="{{ url_for('inbox_scan') }}">
+      <button type="submit" class="btn-quiet">Scan now</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if scanner.recent | length > 1 %}
+  <details style="margin-top: var(--space-16)">
+    <summary class="row-sub" style="cursor:pointer">Run history</summary>
+    <table style="margin-top: var(--space-8)">
+      <thead><tr><th>Started (UTC)</th><th>Trigger</th><th>Result</th></tr></thead>
+      <tbody>
+        {% for run in scanner.recent %}
+        <tr>
+          <td class="row-sub">{{ run.started_at.strftime('%b %-d, %H:%M') }}</td>
+          <td class="row-sub">{{ run.trigger }}</td>
+          <td class="row-sub" {% if run.status == 'error' %}style="color: var(--feedback-error)"{% endif %}>{{ run.summary }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+</div>
+
 {% if pending %}
 <div class="card-grid">
   {% for item in pending %}

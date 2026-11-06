@@ -14,6 +14,12 @@ services:
       # Demo only: fills an EMPTY database with sample data on boot.
       # Set to "0" and wipe the volume once real data is imported.
       SEED_SAMPLE_DATA: "1"
+      # Password gate. Without both of these the app refuses to serve anything.
+      DASHBOARD_PASSWORD: "${ENV.DASHBOARD_PASSWORD}"
+      SECRET_KEY: "${ENV.SECRET_KEY}"
+      # Keep at "0" until this subdomain has a working certificate — a Secure
+      # cookie is never sent over plain HTTP, so login would fail silently.
+      SESSION_COOKIE_SECURE: "0"
     source_mounts:
       - source: "./data"
         target: "/app/data"

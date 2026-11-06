@@ -18,6 +18,7 @@ from models import (
     db,
 )
 import inbox as inbox_lib
+import auth
 
 app = Flask(__name__)
 
@@ -33,6 +34,12 @@ elif _db_url.startswith("sqlite:////"):
 
 app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Session hardening + the password gate. Everything except /healthz, /login and
+# the token-authed /api/ingest requires a session from here on.
+auth.configure(app)
+auth.login_view(app)
+auth.install(app)
 
 db.init_app(app)
 with app.app_context():

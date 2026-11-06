@@ -325,3 +325,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   background: var(--interactive); color: #ffffff;
   font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
 }
+
+/* ---------- form fields ---------- */
+
+.field {
+  width: 100%;
+  font: inherit; font-size: 14px;
+  padding: var(--space-12) var(--space-20);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--panel-background);
+  color: var(--text-primary);
+}
+.field:focus { outline: none; border-color: var(--interactive); }

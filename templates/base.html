@@ -15,6 +15,9 @@
         <a href="{{ url_for('campaigns') }}" class="{{ 'is-active' if request.endpoint in ('campaigns', 'campaign_detail') }}">Campaigns</a>
         <a href="{{ url_for('creators') }}" class="{{ 'is-active' if request.endpoint in ('creators', 'creator_detail') }}">Creators</a>
         <a href="{{ url_for('inbox') }}" class="{{ 'is-active' if request.endpoint == 'inbox' }}">Inbox{% if inbox_pending %} <span class="nav-count">{{ inbox_pending }}</span>{% endif %}</a>
+        <form method="post" action="{{ url_for('logout') }}" style="display:inline">
+          <button type="submit" class="btn-quiet" style="font-size:14px">Sign out</button>
+        </form>
       </nav>
     </div>
   </header>

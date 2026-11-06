@@ -97,6 +97,21 @@ nothing is published without Erin accepting it.
   `data/scanner.lock`. Don't add a second scheduler.
 - Failed runs retry after 1h, not 24h.
 
+## contextone CLI gotchas
+
+- `contextone env` has **no `--project` flag** — variables are account-wide.
+  `contextone infra deploy` does take one.
+- `contextone env get --key K` prints a `K=value` line *and* a JSON line.
+  `| tail -1` gives you the JSON blob, not the value. Parse it:
+  `| tail -1 | python3 -c 'import sys,json; print(json.load(sys.stdin)["value"])'`
+- `contextone env set --value ""` is rejected ("Values must not contain blank
+  values"), so a variable `app.yml` references must hold something. That's why
+  the GMAIL_* vars are seeded with `not-configured`.
+- `contextone infra logs` wants `--id <instance db id>` and `--service app`,
+  not `--project`/`--subdomain`. The id is in the deploy output (currently 454).
+- Deploy reports `status: degraded` / `unknown` even on a healthy instance.
+  Check `/healthz` and the logs instead of trusting it.
+
 ## Adding a model
 
 1. Define it in `models.py`.

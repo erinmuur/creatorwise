@@ -36,6 +36,15 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
+    # Sample data for the deployed demo. Opt-in only, and only into an empty
+    # database — it will never overwrite real data. Turn this off (and wipe the
+    # volume) as soon as the real Betawise/Notion import lands.
+    if os.environ.get("SEED_SAMPLE_DATA") == "1" and not Creator.query.first():
+        import seed as _seed
+
+        _seed.seed()
+        app.logger.warning("seeded sample data (SEED_SAMPLE_DATA=1)")
+
 
 # --- formatting helpers -------------------------------------------------------
 

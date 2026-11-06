@@ -13,7 +13,6 @@ import random
 import sys
 from datetime import date, timedelta
 
-from app import app
 from models import (
     Campaign,
     Creator,
@@ -266,6 +265,10 @@ def summarise():
 
 
 if __name__ == "__main__":
+    # Imported here, not at module scope, so app.py can import this module
+    # without a circular import.
+    from app import app
+
     with app.app_context():
         db.create_all()
         if "--keep" in sys.argv and Creator.query.count():

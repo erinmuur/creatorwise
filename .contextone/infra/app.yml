@@ -11,6 +11,9 @@ services:
     expose: true
     env:
       DATABASE_URL: "sqlite:////app/data/creatorwise.db"
+      # Demo only: fills an EMPTY database with sample data on boot.
+      # Set to "0" and wipe the volume once real data is imported.
+      SEED_SAMPLE_DATA: "1"
     source_mounts:
       - source: "./data"
         target: "/app/data"

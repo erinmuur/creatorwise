@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}{{ piece.title }} · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <p class="eyebrow">
+    <a href="{{ url_for('campaign_detail', slug=piece.campaign.slug) }}">{{ piece.campaign.name }}</a>
+  </p>
+  <h1 class="page-title">{{ piece.title }}</h1>
+  <p class="page-sub">
+    <a href="{{ url_for('creator_detail', creator_id=piece.creator.id) }}">{{ piece.creator.name }}</a>
+    · Posted {{ piece.posted_on | shortdate }}
+    {% if piece.is_cross_posted %}· {{ piece.posts | length }} platforms{% endif %}
+  </p>
+</div>
+
+<div class="split">
+  <div>
+    <div class="panel">
+      <p class="eyebrow">Hook</p>
+      <p class="hook-quote">“{{ piece.hook }}”</p>
+    </div>
+
+    <div class="panel" style="margin-top: var(--space-16)">
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-label">Referrals</div>
+          <div class="stat-value">{{ piece.referrals | thousands }}</div>
+          <div class="stat-note">
+            {% if piece.referrals_are_final %}
+              Final, {{ referral_window }}-day window
+            {% else %}
+              Provisional — window still open
+            {% endif %}
+          </div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Views</div>
+          <div class="stat-value">{{ piece.views | compact }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Likes</div>
+          <div class="stat-value">{{ piece.likes | compact }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Comments</div>
+          <div class="stat-value">{{ piece.comments | compact }}</div>
+        </div>
+        {% if piece.engagement_rate is not none %}
+        <div class="stat">
+          <div class="stat-label">Engagement rate</div>
+          <div class="stat-value">{{ piece.engagement_rate }}%</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">By platform</h2>
+      <div class="panel">
+        {% set max_views = posts | map(attribute='views') | max %}
+        {% for post in posts %}
+        <div class="platform-row">
+          <div style="flex: 1">
+            <div class="row-name">
+              {% if post.url %}<a href="{{ post.url }}">{{ post.platform_label }}</a>{% else %}{{ post.platform_label }}{% endif %}
+            </div>
+            <div class="row-sub">
+              {{ post.views | compact }} views ·
+              {{ post.likes | compact }} likes ·
+              {{ post.comments | compact }} comments
+              {% if post.engagement_rate is not none %}· {{ post.engagement_rate }}% eng{% endif %}
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: {{ (100 * post.views / max_views) | round | int if max_views else 0 }}%"></div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <p class="empty">No platform data yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if snapshots %}
+    <div class="section">
+      <h2 class="section-title">Referral curve</h2>
+      <div class="panel panel-flush">
+        <table>
+          <thead>
+            <tr><th>Window</th><th class="num">Referrals</th><th>Measured</th></tr>
+          </thead>
+          <tbody>
+            {% for s in snapshots %}
+            <tr>
+              <td>{{ s.window_days }} days</td>
+              <td class="num">{{ s.referrals | thousands }}</td>
+              <td class="row-sub">{{ s.measured_at | shortdate }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <aside>
+    <div class="panel">
+      <p class="eyebrow">Video</p>
+      {% if piece.video_path %}
+      <p class="row-sub" style="margin: 0; word-break: break-all">{{ piece.video_path }}</p>
+      <p class="row-sub" style="margin: var(--space-12) 0 0">Download not wired up yet.</p>
+      {% else %}
+      <p class="row-sub" style="margin: 0">No local copy saved.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel" style="margin-top: var(--space-16)">
+      <p class="eyebrow">Links</p>
+      <dl class="kv">
+        {% for post in posts %}
+        <dt>{{ post.platform_label }}</dt>
+        <dd>{% if post.url %}<a href="{{ post.url }}">View post</a>{% else %}—{% endif %}</dd>
+        {% endfor %}
+      </dl>
+    </div>
+
+    <div class="panel" style="margin-top: var(--space-16)">
+      <p class="eyebrow">Provenance</p>
+      <dl class="kv">
+        <dt>Found via</dt><dd>{{ piece.discovered_via | capitalize }}</dd>
+        <dt>Campaign</dt>
+        <dd><a href="{{ url_for('campaign_detail', slug=piece.campaign.slug) }}">{{ piece.campaign.name }}</a></dd>
+      </dl>
+    </div>
+  </aside>
+</div>
+{% endblock %}

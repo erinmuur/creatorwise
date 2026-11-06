@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Campaigns · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1 class="page-title">Campaigns</h1>
+  <p class="page-sub">Every campaign run, at a glance.</p>
+</div>
+
+<div class="card-grid">
+  {% for c in campaigns %}
+  <a class="panel campaign-card" href="{{ url_for('campaign_detail', slug=c.slug) }}">
+    <span class="badge badge-{{ c.status }}">{{ c.status | replace('_', ' ') | capitalize }}</span>
+    <h3 class="campaign-name" style="margin-top: var(--space-12)">{{ c.name }}</h3>
+    <p class="campaign-dates">{{ c.starts_on | shortdate }} – {{ c.ends_on | shortdate }}</p>
+    {% if c.description %}<p class="row-sub" style="margin: 0 0 var(--space-16)">{{ c.description }}</p>{% endif %}
+    <div class="campaign-metrics">
+      <div><strong>{{ c.delivered_count }}/{{ c.creator_count }}</strong> delivered</div>
+      <div><strong>{{ c.total_referrals | compact }}</strong> referrals</div>
+      <div><strong>{{ c.delivery_rate }}%</strong> follow-through</div>
+    </div>
+  </a>
+  {% else %}
+  <p class="empty">No campaigns yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

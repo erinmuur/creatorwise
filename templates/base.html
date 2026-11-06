@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}creatorwise{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <a class="wordmark" href="{{ url_for('index') }}">creatorwise</a>
+      <nav class="nav">
+        <a href="{{ url_for('index') }}" class="{{ 'is-active' if request.endpoint == 'index' }}">Overview</a>
+        <a href="{{ url_for('campaigns') }}" class="{{ 'is-active' if request.endpoint in ('campaigns', 'campaign_detail') }}">Campaigns</a>
+        <a href="{{ url_for('creators') }}" class="{{ 'is-active' if request.endpoint in ('creators', 'creator_detail') }}">Creators</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

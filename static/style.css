@@ -1,13 +1,299 @@
-:root { color-scheme: light dark; }
+/* creatorwise — styled with the Bookwise design system.
+ *
+ * Every colour below is a semantic token from bookwise/tokens.md, declared once
+ * here with its light and dark value. Don't hardcode hex anywhere else.
+ * Web type scale is restricted to 10/11/12/14/16/20px — any other size is a
+ * design-system violation.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap');
+
+:root {
+  /* surfaces */
+  --surface-primary:    #fbf9f3;
+  --surface-secondary:  #f8f5ed;
+  --surface-tertiary:   #f5f1e8;
+  --surface-elevated:   #ffffff;
+  --surface-inverse:    #161616;
+  --panel-background:   #ffffff;
+
+  /* text */
+  --text-primary:       #333333;
+  --text-secondary:     #7b7a79;
+  --text-tertiary:      #a6a4a0;
+  --text-inverse:       #efebdf;
+
+  /* borders */
+  --border-subtle:      #f5f1e8;
+  --border-medium:      #efebdf;
+  --border-strong:      #dbd7cd;
+
+  /* accent + feedback */
+  --interactive:          #ff6900;
+  --interactive-text:     #ff6900;
+  --feedback-success:     #10b981;
+  --feedback-success-bg:  #ecfdf5;
+  --feedback-error:       #ef4444;
+  --feedback-error-bg:    #fef2f2;
+  --feedback-warning:     #eab308;
+  --feedback-warning-bg:  #fefce8;
+  --feedback-info:        #2675de;
+  --feedback-info-bg:     #f2faff;
+
+  /* shadow/100 — card, dropdown */
+  --shadow-drop:            #2a28221a;
+  --shadow-100-inset-top:   #ffffff00;
+  --shadow-100-inset-perim: #ffffff00;
+  --shadow-100-ring:        #2a28220d;
+
+  /* spacing scale (4px base) */
+  --space-4: 4px;   --space-8: 8px;   --space-12: 12px; --space-16: 16px;
+  --space-20: 20px; --space-24: 24px; --space-32: 32px; --space-48: 48px;
+
+  /* radius */
+  --radius-card: 20px;
+  --radius-pill: 48px;
+  --radius-badge: 999px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-primary:   #161616;
+    --surface-secondary: #1f1f1f;
+    --surface-tertiary:  #292929;
+    --surface-elevated:  #2e2e2e;
+    --surface-inverse:   #fbf9f3;
+    --panel-background:  #1f1f1f;
+
+    --text-primary:      #efebdf;
+    --text-secondary:    #878684;
+    --text-tertiary:     #696968;
+    --text-inverse:      #333333;
+
+    --border-subtle:     #333333;
+    --border-medium:     #3d3d3d;
+    --border-strong:     #5d5d5d;
+
+    /* Orange is used more sparingly in dark mode — see DESIGN.md §Dark Mode. */
+    --interactive:          #ff8904;
+    --interactive-text:     #ffb86a;
+    --feedback-success:     #34d399;
+    --feedback-success-bg:  #064e3b;
+    --feedback-error:       #f87171;
+    --feedback-error-bg:    #7f1d1d;
+    --feedback-warning:     #facc15;
+    --feedback-warning-bg:  #713f12;
+    --feedback-info:        #7caeec;
+    --feedback-info-bg:     #1e3a8a;
+
+    --shadow-drop:            #0000002e;
+    --shadow-100-inset-top:   #ffffff0d;
+    --shadow-100-inset-perim: #ffffff05;
+    --shadow-100-ring:        #2a28221f;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
 
 body {
   margin: 0;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  font: 16px/1.5 ui-sans-serif, -apple-system, system-ui, sans-serif;
+  background: var(--surface-primary);
+  color: var(--text-primary);
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, -apple-system, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
 }
 
-main { padding: 2rem; text-align: center; }
-h1 { margin: 0 0 .25rem; font-size: 2rem; letter-spacing: -.02em; }
-.muted { margin: 0; opacity: .6; }
+a { color: var(--interactive-text); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------- shell ---------- */
+
+.masthead {
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-primary);
+  position: sticky; top: 0; z-index: 10;
+}
+.masthead-inner {
+  max-width: 1120px; margin: 0 auto;
+  padding: var(--space-16);
+  display: flex; align-items: center; gap: var(--space-24);
+}
+.wordmark {
+  font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.wordmark:hover { text-decoration: none; }
+.nav { display: flex; gap: var(--space-4); margin-left: auto; flex-wrap: wrap; }
+.nav a {
+  padding: var(--space-8) var(--space-16);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 14px; font-weight: 500;
+}
+.nav a:hover { background: var(--surface-tertiary); text-decoration: none; }
+.nav a.is-active { background: var(--surface-inverse); color: var(--text-inverse); }
+
+main { max-width: 1120px; margin: 0 auto; padding: var(--space-32) var(--space-16) var(--space-48); }
+
+/* ---------- headings ---------- */
+
+.page-head { margin-bottom: var(--space-32); }
+.page-title { font-size: 20px; line-height: 28px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.page-sub { font-size: 14px; color: var(--text-secondary); margin: var(--space-4) 0 0; }
+.eyebrow {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-tertiary);
+  margin: 0 0 var(--space-12);
+}
+.section { margin-top: var(--space-32); }
+.section-title { font-size: 16px; font-weight: 600; margin: 0 0 var(--space-16); }
+
+/* ---------- panels ---------- */
+
+/* Per tokens.md: a panel uses EITHER a border OR a shadow tier, never both.
+   These use the shadow/100 (elevated) treatment. */
+.panel {
+  background: var(--panel-background);
+  border-radius: var(--radius-card);
+  padding: var(--space-20);
+  box-shadow:
+    inset 0 1px 0 0 var(--shadow-100-inset-top),
+    inset 0 0 0 1px var(--shadow-100-inset-perim),
+    0 0 0 1px var(--shadow-100-ring),
+    0 1px 1px -0.5px var(--shadow-drop),
+    0 3px 3px -1.5px var(--shadow-drop);
+}
+.panel-flush { padding: 0; overflow: hidden; }
+
+/* ---------- stat tiles ---------- */
+
+.stat-row {
+  display: grid; gap: var(--space-12);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.stat { }
+.stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+.stat-value { font-size: 20px; line-height: 28px; font-weight: 700; margin-top: var(--space-4); letter-spacing: -0.01em; }
+.stat-note { font-size: 12px; color: var(--text-secondary); margin-top: var(--space-4); }
+
+/* ---------- cards grid ---------- */
+
+.card-grid {
+  display: grid; gap: var(--space-16);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.campaign-card { display: block; color: inherit; }
+.campaign-card:hover { text-decoration: none; }
+.campaign-card:hover .campaign-name { color: var(--interactive-text); }
+.campaign-name { font-size: 16px; font-weight: 600; margin: 0; }
+.campaign-dates { font-size: 12px; color: var(--text-secondary); margin: var(--space-4) 0 var(--space-16); }
+.campaign-metrics { display: flex; gap: var(--space-20); }
+.campaign-metrics div { font-size: 12px; color: var(--text-secondary); }
+.campaign-metrics strong { display: block; font-size: 16px; color: var(--text-primary); font-weight: 600; }
+
+/* ---------- ugc grid ---------- */
+
+.ugc-grid {
+  display: grid; gap: var(--space-16);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.ugc-card { display: block; color: inherit; }
+.ugc-card:hover { text-decoration: none; }
+.ugc-card:hover .ugc-title { color: var(--interactive-text); }
+/* Until real thumbnails are downloaded, the card leads with the hook — that's
+   the thing worth scanning anyway. Kept portrait-ish to read as short-form
+   video, but nowhere near 9:16, which crowds everything else off the page. */
+.ugc-thumb {
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  background: var(--surface-tertiary);
+  display: flex; align-items: flex-start;
+  padding: var(--space-16);
+  margin-bottom: var(--space-12);
+  overflow: hidden;
+  position: relative;
+}
+.ugc-thumb-hook {
+  font-family: 'Source Serif 4', ui-serif, Georgia, serif;
+  font-size: 16px; line-height: 22px; font-weight: 600;
+  color: var(--text-primary);
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ugc-title { font-size: 14px; font-weight: 600; margin: 0; }
+.ugc-creator { font-size: 12px; color: var(--text-secondary); margin: 2px 0 var(--space-8); }
+.ugc-stats { display: flex; gap: var(--space-12); font-size: 12px; color: var(--text-secondary); }
+.ugc-stats b { color: var(--text-primary); font-weight: 600; }
+
+/* ---------- tables ---------- */
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: var(--space-12) var(--space-16); }
+thead th {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+tbody tr + tr td { border-top: 1px solid var(--border-subtle); }
+tbody tr:hover td { background: var(--surface-tertiary); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.row-name { font-weight: 600; }
+.row-sub { font-size: 12px; color: var(--text-secondary); }
+
+/* ---------- badges ---------- */
+
+.badge {
+  display: inline-block;
+  padding: 3px var(--space-8);
+  border-radius: var(--radius-badge);
+  font-size: 11px; font-weight: 600; line-height: 13px;
+  white-space: nowrap;
+}
+.badge-delivered { background: var(--feedback-success-bg); color: var(--feedback-success); }
+.badge-opted_in  { background: var(--feedback-info-bg);    color: var(--feedback-info); }
+.badge-no_show   { background: var(--surface-tertiary);    color: var(--text-secondary); }
+.badge-active    { background: var(--feedback-warning-bg); color: var(--feedback-warning); }
+.badge-complete  { background: var(--surface-tertiary);    color: var(--text-secondary); }
+.badge-planned   { background: var(--feedback-info-bg);    color: var(--feedback-info); }
+.badge-platform  { background: var(--surface-tertiary);    color: var(--text-secondary); }
+.badge-provisional { background: var(--surface-tertiary);  color: var(--text-tertiary); }
+
+/* ---------- sort controls ---------- */
+
+.sortbar { display: flex; align-items: center; gap: var(--space-8); flex-wrap: wrap; margin-bottom: var(--space-16); }
+.sortbar-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); }
+.chip {
+  padding: var(--space-4) var(--space-12);
+  border-radius: var(--radius-pill);
+  font-size: 12px; font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--surface-tertiary);
+}
+.chip:hover { text-decoration: none; color: var(--text-primary); }
+.chip.is-active { background: var(--surface-inverse); color: var(--text-inverse); }
+
+/* ---------- detail layout ---------- */
+
+.split { display: grid; gap: var(--space-24); grid-template-columns: 2fr 1fr; align-items: start; }
+@media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: var(--space-8) var(--space-16); }
+.kv dt { font-size: 12px; color: var(--text-secondary); }
+.kv dd { font-size: 14px; margin: 0; }
+
+.hook-quote {
+  font-family: 'Source Serif 4', ui-serif, Georgia, serif;
+  font-size: 20px; line-height: 28px; font-weight: 600;
+  margin: 0; letter-spacing: -0.01em;
+}
+
+.platform-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-16); }
+.platform-row + .platform-row { border-top: 1px solid var(--border-subtle); margin-top: var(--space-16); padding-top: var(--space-16); }
+
+.bar-track { height: 6px; border-radius: var(--radius-badge); background: var(--surface-tertiary); overflow: hidden; margin-top: var(--space-8); }
+.bar-fill { height: 100%; border-radius: var(--radius-badge); background: var(--interactive); }
+
+.empty { font-size: 14px; color: var(--text-secondary); padding: var(--space-24); text-align: center; }

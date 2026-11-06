@@ -1,15 +1,106 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>creatorwise</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-  <main>
-    <h1>creatorwise</h1>
-    <p class="muted">Scaffold is live. Build the real thing from here.</p>
-  </main>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Overview · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1 class="page-title">Overview</h1>
+  <p class="page-sub">Creators, content, and what it drove.</p>
+</div>
+
+<div class="panel">
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-label">Creators</div>
+      <div class="stat-value">{{ totals.creators }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Videos</div>
+      <div class="stat-value">{{ totals.pieces }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Referrals</div>
+      <div class="stat-value">{{ totals.referrals | thousands }}</div>
+      <div class="stat-note">{{ referral_window }} days after post</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Engagement</div>
+      <div class="stat-value">{{ totals.engagement | compact }}</div>
+      <div class="stat-note">Likes + comments</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Views</div>
+      <div class="stat-value">{{ totals.views | compact }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2 class="section-title">Campaigns</h2>
+  <div class="card-grid">
+    {% for c in campaigns %}
+    <a class="panel campaign-card" href="{{ url_for('campaign_detail', slug=c.slug) }}">
+      <span class="badge badge-{{ c.status }}">{{ c.status | replace('_', ' ') | capitalize }}</span>
+      <h3 class="campaign-name" style="margin-top: var(--space-12)">{{ c.name }}</h3>
+      <p class="campaign-dates">{{ c.starts_on | shortdate }} – {{ c.ends_on | shortdate }}</p>
+      <div class="campaign-metrics">
+        <div><strong>{{ c.delivered_count }}/{{ c.creator_count }}</strong> delivered</div>
+        <div><strong>{{ c.total_referrals | compact }}</strong> referrals</div>
+        <div><strong>{{ c.total_engagement | compact }}</strong> engagement</div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="split section">
+  <div class="panel panel-flush">
+    <table>
+      <thead>
+        <tr>
+          <th>Top videos</th>
+          <th class="num">Referrals</th>
+          <th class="num">Engagement</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in top_pieces %}
+        <tr>
+          <td>
+            <div class="row-name"><a href="{{ url_for('ugc_detail', piece_id=p.id) }}">{{ p.title }}</a></div>
+            <div class="row-sub">{{ p.creator.name }} · {{ p.campaign.name }}</div>
+          </td>
+          <td class="num">{{ p.referrals | thousands }}</td>
+          <td class="num">{{ p.engagement | compact }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="empty">No content yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel panel-flush">
+    <table>
+      <thead>
+        <tr>
+          <th>Top creators</th>
+          <th class="num">Referrals</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in top_creators %}
+        <tr>
+          <td>
+            <div class="row-name"><a href="{{ url_for('creator_detail', creator_id=c.id) }}">{{ c.name }}</a></div>
+            <div class="row-sub">{{ c.delivered_count }} delivered · {{ c.follower_count | compact }} followers</div>
+          </td>
+          <td class="num">{{ c.total_referrals | thousands }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="2" class="empty">No creators yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

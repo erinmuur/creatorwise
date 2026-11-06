@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Creators · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1 class="page-title">Creators</h1>
+  <p class="page-sub">{{ creators | length }} recruited.</p>
+</div>
+
+<div class="sortbar">
+  <span class="sortbar-label">Sort</span>
+  {% for key, label in [('referrals','Referrals'), ('engagement','Engagement'), ('followers','Followers'), ('delivered','Delivered'), ('name','Name')] %}
+  <a class="chip {{ 'is-active' if sort == key }}" href="{{ url_for('creators', sort=key) }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div class="panel panel-flush">
+  <table>
+    <thead>
+      <tr>
+        <th>Creator</th>
+        <th>Handles</th>
+        <th>Source</th>
+        <th class="num">Followers</th>
+        <th class="num">Delivered</th>
+        <th class="num">Referrals</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in creators %}
+      <tr>
+        <td>
+          <div class="row-name"><a href="{{ url_for('creator_detail', creator_id=c.id) }}">{{ c.name }}</a></div>
+          <div class="row-sub">{{ c.email }}</div>
+        </td>
+        <td>
+          {% for h in c.handles %}
+          <span class="badge badge-platform">{{ h.platform_label }}</span>
+          {% endfor %}
+        </td>
+        <td class="row-sub">{{ c.recruitment_source | capitalize }}</td>
+        <td class="num">{{ c.follower_count | compact }}</td>
+        <td class="num">{{ c.delivered_count }}</td>
+        <td class="num">{{ c.total_referrals | thousands }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty">No creators yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

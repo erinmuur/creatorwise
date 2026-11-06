@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ creator.name }} · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <p class="eyebrow"><a href="{{ url_for('creators') }}">Creators</a></p>
+  <h1 class="page-title">{{ creator.name }}</h1>
+  <p class="page-sub">{{ creator.email }}</p>
+</div>
+
+<div class="split">
+  <div>
+    <div class="panel">
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-label">Referrals</div>
+          <div class="stat-value">{{ creator.total_referrals | thousands }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Engagement</div>
+          <div class="stat-value">{{ creator.total_engagement | compact }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Videos</div>
+          <div class="stat-value">{{ creator.ugc | length }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Followers</div>
+          <div class="stat-value">{{ creator.follower_count | compact }}</div>
+          <div class="stat-note">Largest platform</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Campaigns</h2>
+      <div class="panel panel-flush">
+        <table>
+          <thead>
+            <tr>
+              <th>Campaign</th>
+              <th>Status</th>
+              <th class="num">Videos</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in participations %}
+            <tr>
+              <td>
+                <div class="row-name"><a href="{{ url_for('campaign_detail', slug=p.campaign.slug) }}">{{ p.campaign.name }}</a></div>
+                <div class="row-sub">Opted in {{ p.opted_in_on | shortdate }}</div>
+              </td>
+              <td><span class="badge badge-{{ p.status }}">{{ p.status_label }}</span></td>
+              <td class="num">{{ p.pieces | length }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="empty">Not in any campaign yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Content library</h2>
+      <div class="ugc-grid">
+        {% for p in pieces %}
+        <a class="ugc-card" href="{{ url_for('ugc_detail', piece_id=p.id) }}">
+          <div class="ugc-thumb"><span class="ugc-thumb-hook">{{ p.hook }}</span></div>
+          <h3 class="ugc-title">{{ p.title }}</h3>
+          <p class="ugc-creator">{{ p.campaign.name }} · {{ p.posted_on | shortdate }}</p>
+          <div class="ugc-stats">
+            <span><b>{{ p.referrals | thousands }}</b> ref</span>
+            <span><b>{{ p.likes | compact }}</b> likes</span>
+          </div>
+        </a>
+        {% else %}
+        <p class="empty">No content yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <aside>
+    <div class="panel">
+      <p class="eyebrow">Handles</p>
+      <dl class="kv">
+        {% for h in creator.handles %}
+        <dt>{{ h.platform_label }}</dt>
+        <dd>
+          {% if h.profile_url %}<a href="{{ h.profile_url }}">{{ h.handle }}</a>{% else %}{{ h.handle }}{% endif %}
+          <div class="row-sub">{{ h.follower_count | compact }} followers</div>
+        </dd>
+        {% endfor %}
+      </dl>
+    </div>
+
+    <div class="panel" style="margin-top: var(--space-16)">
+      <p class="eyebrow">Recruitment</p>
+      <dl class="kv">
+        <dt>Source</dt><dd>{{ creator.recruitment_source | capitalize }}</dd>
+        <dt>Added</dt><dd>{{ creator.created_at | shortdate }}</dd>
+      </dl>
+      {% if creator.recruitment_note %}
+      <p class="row-sub" style="margin: var(--space-16) 0 0">{{ creator.recruitment_note }}</p>
+      {% endif %}
+    </div>
+
+    <div class="panel" style="margin-top: var(--space-16)">
+      <p class="eyebrow">Payment</p>
+      <dl class="kv">
+        <dt>Method</dt><dd>{{ creator.payment_method | capitalize }}</dd>
+        <dt>Send to</dt><dd>{{ creator.payment_handle }}</dd>
+      </dl>
+      {% if creator.payment_note %}
+      <p class="row-sub" style="margin: var(--space-16) 0 0">{{ creator.payment_note }}</p>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+{% endblock %}

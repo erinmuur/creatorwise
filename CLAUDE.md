@@ -40,13 +40,32 @@ These have bitten this setup before:
    then sync the remote workspace to your commit — otherwise you deploy stale code
    and the change silently doesn't appear:
    `contextone repo sync --project creatorwise --ref main --commit $(git rev-parse HEAD)`
-2. **Private repos need GitHub App access.** The first deploy fails with a clone
-   error until the contextone GitHub App is granted access to this repo at
-   `contextone.dev/dashboard/integrations`. One-time fix.
+2. **This repo must stay PUBLIC to be deployable.** Contextone's workspace git
+   fetch is unauthenticated. While the repo was private, `repo sync`, `repo reset`
+   and `deploy` all failed with `could not read Username`, *even with* the
+   contextone GitHub App granted "All repositories" access. All three began
+   working the moment the repo was made public. Granting App access is NOT the
+   fix, despite what the dashboard implies. (Verified 2026-11-05.)
+   Note: after flipping visibility, the first sync can still fail — GitHub takes
+   a few seconds to propagate. Retry once before assuming it's broken.
 3. **Docker layer caching** can serve old code even after a successful deploy. Bump
    `ARG BUILD_ID` in the `Dockerfile` to force a rebuild if that happens.
 4. **Never destroy a deployed instance** to fix it — the SQLite volume and SSL certs
    are lost, and repeated recreates hit Let's Encrypt rate limits. Redeploy in place.
+
+5. **TLS is broken on this subdomain as of 2026-11-05.** `https://creatorwise.infra.contextone.dev`
+   serves a certificate for an unrelated app (`CN=cx-emails-agent.app.contextone.dev`),
+   so HTTPS fails verification. Use `http://` meanwhile — the app itself is healthy.
+   A redeploy and a `restart` both failed to trigger issuance; `spark.infra.contextone.dev`
+   serves a correct cert, so issuance works platform-wide and this is specific to
+   this subdomain. Suspected Let's Encrypt rate limiting from the earlier failed
+   deploys. Retry later with a redeploy (not a restart — that doesn't re-trigger it):
+   ```
+   contextone infra deploy --file .contextone/infra/app.yml --project creatorwise \
+     --subdomain creatorwise --ref main --commit $(git rev-parse HEAD)
+   ```
+   Do NOT `destroy` the instance to fix this — it loses the volume and risks
+   rate-limiting the subdomain for days.
 
 ## Adding a model
 

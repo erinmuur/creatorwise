@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <p class="eyebrow"><a href="{{ url_for('campaigns') }}">Campaigns</a></p>
+  <h1 class="page-title">{{ campaign.name }}</h1>
+  <p class="page-sub">
+    {{ campaign.starts_on | shortdate }} – {{ campaign.ends_on | shortdate }}
+    · <span class="badge badge-{{ campaign.status }}">{{ campaign.status | capitalize }}</span>
+  </p>
+</div>
+
+<div class="panel">
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-label">Opted in</div>
+      <div class="stat-value">{{ campaign.creator_count }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Delivered</div>
+      <div class="stat-value">{{ campaign.delivered_count }}</div>
+      <div class="stat-note">{{ campaign.delivery_rate }}% follow-through</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Videos</div>
+      <div class="stat-value">{{ campaign.ugc | length }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Referrals</div>
+      <div class="stat-value">{{ campaign.total_referrals | thousands }}</div>
+      <div class="stat-note">{{ referral_window }} days after post</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Engagement</div>
+      <div class="stat-value">{{ campaign.total_engagement | compact }}</div>
+    </div>
+  </div>
+  {% if campaign.payment_terms %}
+  <p class="row-sub" style="margin: var(--space-20) 0 0">Terms: {{ campaign.payment_terms }}</p>
+  {% endif %}
+</div>
+
+<div class="section">
+  <h2 class="section-title">Content</h2>
+
+  <div class="sortbar">
+    <span class="sortbar-label">Sort</span>
+    {% for key, (label, _) in sorts.items() %}
+      {% set next_dir = 'asc' if (sort == key and direction == 'desc') else 'desc' %}
+      <a class="chip {{ 'is-active' if sort == key }}"
+         href="{{ url_for('campaign_detail', slug=campaign.slug, sort=key, dir=next_dir) }}">
+        {{ label }}{% if sort == key %} {{ '↓' if direction == 'desc' else '↑' }}{% endif %}
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="ugc-grid">
+    {% for p in pieces %}
+    <a class="ugc-card" href="{{ url_for('ugc_detail', piece_id=p.id) }}">
+      <div class="ugc-thumb">
+        <span class="ugc-thumb-hook">{{ p.hook }}</span>
+      </div>
+      <h3 class="ugc-title">{{ p.title }}</h3>
+      <p class="ugc-creator">{{ p.creator.name }} · {{ p.posted_on | shortdate }}</p>
+      <div class="ugc-stats">
+        <span><b>{{ p.referrals | thousands }}</b> ref</span>
+        <span><b>{{ p.likes | compact }}</b> likes</span>
+        <span><b>{{ p.comments | compact }}</b> com</span>
+      </div>
+      {% if not p.referrals_are_final %}
+      <p style="margin: var(--space-8) 0 0"><span class="badge badge-provisional">Window still open</span></p>
+      {% endif %}
+    </a>
+    {% else %}
+    <p class="empty">No content delivered yet.</p>
+    {% endfor %}
+  </div>
+</div>
+
+{% if outstanding %}
+<div class="section">
+  <h2 class="section-title">Waiting on content ({{ outstanding | length }})</h2>
+  <div class="panel panel-flush">
+    <table>
+      <thead>
+        <tr>
+          <th>Creator</th>
+          <th>Status</th>
+          <th>Opted in</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in outstanding %}
+        <tr>
+          <td>
+            <div class="row-name"><a href="{{ url_for('creator_detail', creator_id=p.creator.id) }}">{{ p.creator.name }}</a></div>
+            <div class="row-sub">{{ p.creator.email }}</div>
+          </td>
+          <td><span class="badge badge-{{ p.status }}">{{ p.status_label }}</span></td>
+          <td class="row-sub">{{ p.opted_in_on | shortdate }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

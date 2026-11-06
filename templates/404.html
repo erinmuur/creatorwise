@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Not found · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1 class="page-title">Not found</h1>
+  <p class="page-sub">That page doesn't exist.</p>
+</div>
+<p><a href="{{ url_for('index') }}">Back to overview</a></p>
+{% endblock %}

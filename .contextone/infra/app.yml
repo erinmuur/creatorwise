@@ -20,6 +20,9 @@ services:
       # Keep at "0" until this subdomain has a working certificate — a Secure
       # cookie is never sent over plain HTTP, so login would fail silently.
       SESSION_COOKIE_SECURE: "0"
+      # Bearer token for /api/ingest, used by the daily inbox scan job.
+      # Without it that endpoint returns 503 and accepts nothing.
+      INGEST_TOKEN: "${ENV.INGEST_TOKEN}"
     source_mounts:
       - source: "./data"
         target: "/app/data"

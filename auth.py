@@ -19,11 +19,15 @@ from flask import redirect, render_template, request, session, url_for
 
 SESSION_KEY = "authed"
 
-# Reachable without logging in.
+# Reachable without a session. Everything here either has no secrets to leak or
+# does its own INGEST_TOKEN bearer check — leaving one out doesn't fail safe, it
+# just redirects an API client to the login form and looks like a 302 mystery.
 PUBLIC_ENDPOINTS = {
-    "login",      # the login form itself
-    "healthz",    # container liveness probe
-    "api_ingest", # has its own bearer-token auth
+    "login",           # the login form itself
+    "healthz",         # container liveness probe
+    "api_ingest",      # bearer-token auth
+    "api_scan",        # bearer-token auth
+    "api_gmail_check", # bearer-token auth
     "static",
 }
 

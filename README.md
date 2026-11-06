@@ -21,7 +21,7 @@ first boot. The `data/` directory is gitignored except for `.gitkeep`.
 ## Tests
 
 ```bash
-./venv/bin/python tests/test_scan.py && ./venv/bin/python tests/test_gmail_http.py
+for t in tests/test_*.py; do ./venv/bin/python "$t" || break; done
 ```
 
 No network and no credentials needed — the Gmail tests run against a fake Google

@@ -1,3 +1,33 @@
+<!--
+STATUS: not scheduled as of 2026-11-06.
+
+This ran once as contextone periodic job 97 and did not work: it reported
+success, produced an empty transcript, and queued nothing, despite qualifying
+mail sitting inside its 3-day window. The likely cause is that a headless
+periodic session does not inherit the Superhuman connector, which is bound to
+an interactive Claude session — so the job had no way to read the mailbox, and
+failed silently rather than erroring.
+
+The job was deleted rather than left firing daily for nothing (the contextone
+CLI has no disable, only create/run/delete).
+
+The dashboard side IS verified working: POSTing a real creator email to
+/api/ingest with the production token parses the links and queues the item for
+review. Only the "something reads the mailbox on a schedule" half is missing.
+
+To recreate once connector access is solved:
+
+  bash "$HOME/.claude/plugins/cache/context-one-plugin/contextone/<version>/scripts/periodic.sh" create \
+    --name "creatorwise-inbox-scan" \
+    --schedule "0 13 * * *" \
+    --timeout-seconds 900 \
+    --workspace-path creatorwise \
+    --prompt "$(cat jobs/daily-inbox-scan.md)"
+
+Schedule is UTC (13:00 UTC = 8am ET). Requires INGEST_TOKEN in contextone env,
+which is already set.
+-->
+
 Scan erin@readwise.io for creator content submissions and send them to the
 creatorwise dashboard for review.
 

@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-ARG BUILD_ID=1
+ARG BUILD_ID=3
 COPY . .
 
 # Fail the build early if the app can't even be imported.

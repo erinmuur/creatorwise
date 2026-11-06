@@ -16,7 +16,7 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `inbox.py` | email -> reviewable InboxItem (link extraction, creator matching) |
 | `gmail.py` | Gmail API client, stdlib only — reads erin@readwise.io |
 | `scan.py` | one scan + the in-process scheduler |
-| `tests/` | `python3 tests/test_scan.py`, `python3 tests/test_gmail_http.py` |
+| `tests/` | run each with the venv python; no network, no credentials |
 | `tools/gmail_auth.py` | one-off: mint the Gmail refresh token (run it yourself) |
 | `docs/gmail-setup.md` | the Google Cloud steps only Erin can do |
 | `models.py` | SQLAlchemy models (`db` lives here) |

@@ -13,6 +13,8 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | path | purpose |
 |---|---|
 | `app.py` | Flask app, routes, DB wiring |
+| `importer.py` | CSV -> creators. Alias-matched columns, dry run by default |
+| `tools/reset_data.py` | clear sample data before a real import |
 | `inbox.py` | email -> reviewable InboxItem (link extraction, creator matching) |
 | `gmail.py` | Gmail API client, stdlib only — reads erin@readwise.io |
 | `scan.py` | one scan + the in-process scheduler |
@@ -88,6 +90,26 @@ These have bitten this setup before:
    ```
    Do NOT `destroy` the instance to fix this — it loses the volume and risks
    rate-limiting the subdomain for days.
+
+## Importing creators
+
+`importer.py` is `plan()` then `apply()` — never one without the other. The CLI
+dry-runs unless given `--apply`.
+
+- Columns are matched on **aliases** (`ALIASES` at the top of the file), not an
+  exact header. A new export with an unknown column name is a one-line addition
+  there, not a reshape of their spreadsheet.
+- Matching is on **lowercased email**, so re-running an updated export is the
+  normal workflow.
+- **A blank cell never overwrites existing data.** Partial exports are normal.
+- Rows that can't be resolved are **blocked and reported with a line number**,
+  never guessed at — no email, no name, duplicate address in the same file.
+- Unrecognized columns are **reported**, not silently dropped.
+- The whole file commits in one transaction.
+- Known gap: `Creator.email` is unique and single, so a creator with two
+  addresses imports the first and warns about the second. Real in this data —
+  `bookshelfbea@example.com` and `bea.k@example.net` are one person.
+  Fixing it means a `creator_emails` table; don't bodge it in the importer.
 
 ## The mail scanner
 

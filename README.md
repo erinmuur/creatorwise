@@ -27,6 +27,21 @@ for t in tests/test_*.py; do ./venv/bin/python "$t" || break; done
 No network and no credentials needed — the Gmail tests run against a fake Google
 on loopback.
 
+## Importing creators
+
+```bash
+./venv/bin/python importer.py ~/Downloads/creators.csv          # dry run
+./venv/bin/python importer.py ~/Downloads/creators.csv --apply  # commit
+```
+
+Matches columns on aliases rather than an exact header row, so most exports go
+in unchanged. Dry run by default; re-running is safe and never erases data.
+Full guide: **[docs/importing.md](docs/importing.md)**.
+
+Everything in the dashboard today is sample data — clear it before a real
+import with `./venv/bin/python tools/reset_data.py` (counts only without
+`--yes`).
+
 ## The mail scanner
 
 creatorwise reads `erin@readwise.io` over the Gmail API every 24 hours and

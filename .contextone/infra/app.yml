@@ -11,9 +11,10 @@ services:
     expose: true
     env:
       DATABASE_URL: "sqlite:////app/data/creatorwise.db"
-      # Demo only: fills an EMPTY database with sample data on boot.
-      # Set to "0" and wipe the volume once real data is imported.
-      SEED_SAMPLE_DATA: "1"
+      # Off since the real creator import began (2026-11-09). Leave it off:
+      # seed.py fills an EMPTY database on boot, so a fresh volume would come up
+      # holding 14 invented creators instead of nothing.
+      SEED_SAMPLE_DATA: "0"
       # Password gate. Without both of these the app refuses to serve anything.
       DASHBOARD_PASSWORD: "${ENV.DASHBOARD_PASSWORD}"
       SECRET_KEY: "${ENV.SECRET_KEY}"

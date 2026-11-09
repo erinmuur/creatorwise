@@ -91,6 +91,17 @@ These have bitten this setup before:
    Do NOT `destroy` the instance to fix this — it loses the volume and risks
    rate-limiting the subdomain for days.
 
+## Sample data
+
+Cleared locally on 2026-11-09, ahead of the real import. `SEED_SAMPLE_DATA` is
+now `0` in `.env` and in `app.yml` — leave it off. `seed.py` fills an **empty**
+database on boot, so turning it back on means a fresh volume comes up holding 14
+invented creators instead of nothing, and once those mix with real ones there's
+no telling them apart.
+
+The deployed instance still holds its own copy of the sample data; it hasn't
+been touched.
+
 ## Importing creators
 
 `importer.py` is `plan()` then `apply()` — never one without the other. The CLI

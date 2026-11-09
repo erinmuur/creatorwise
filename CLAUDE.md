@@ -59,16 +59,32 @@ These have bitten this setup before:
 4. **Never destroy a deployed instance** to fix it — the SQLite volume and SSL certs
    are lost, and repeated recreates hit Let's Encrypt rate limits. Redeploy in place.
 
-5. **TLS is broken on this subdomain as of 2026-11-05.** `https://creatorwise.infra.contextone.dev`
-   serves a certificate for an unrelated app (`CN=cx-emails-agent.app.contextone.dev`),
-   so HTTPS fails verification. Use `http://` meanwhile — the app itself is healthy.
-   A redeploy and a `restart` both failed to trigger issuance; `spark.infra.contextone.dev`
-   serves a correct cert, so issuance works platform-wide and this is specific to
-   this subdomain. Suspected Let's Encrypt rate limiting from the earlier failed
-   deploys. Retry later with a redeploy (not a restart — that doesn't re-trigger it):
+5. **TLS is broken on this subdomain, and the site is therefore unreachable in a
+   browser.** `https://creatorwise.infra.contextone.dev` serves a certificate for
+   an unrelated app (`CN=cx-emails-agent.app.contextone.dev`, issued Sep 5), so
+   HTTPS fails verification.
+
+   **`http://` is NOT a workaround.** The whole `.dev` TLD is on the HSTS preload
+   list baked into every major browser, so `http://` on any `*.dev` host is
+   upgraded to HTTPS before the request leaves the machine — you get
+   `ERR_CERT_COMMON_NAME_INVALID`, not the app. Confirmed against
+   `hstspreload.org/api/v2/status?domain=dev` → `"status": "preloaded"`, and by
+   loading it in a real browser. (An earlier note here said to use `http://`
+   meanwhile; that was wrong, and only ever true for `curl`, which ignores HSTS.)
+
+   So: `curl` and the `/api/*` endpoints work fine over `http://`. A human with a
+   browser cannot open the dashboard at all until a certificate exists.
+
+   Four deploys and a restart across 2026-11-05 → 11-09 produced no new cert.
+   `spark.infra.contextone.dev` serves a correct cert, so issuance works
+   platform-wide; this is specific to this subdomain. Suspected Let's Encrypt
+   rate limiting from the earlier failed (private-repo) deploys. The CLI exposes
+   no cert or custom-domain command, so the options are a contextone support
+   ticket or a different subdomain.
+
+   For local work, just run the app on localhost — no TLS involved:
    ```
-   contextone infra deploy --file .contextone/infra/app.yml --project creatorwise \
-     --subdomain creatorwise --ref main --commit $(git rev-parse HEAD)
+   ./venv/bin/python app.py    # http://localhost:5000
    ```
    Do NOT `destroy` the instance to fix this — it loses the volume and risks
    rate-limiting the subdomain for days.

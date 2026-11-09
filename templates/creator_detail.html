@@ -89,7 +89,7 @@
         <dt>{{ h.platform_label }}</dt>
         <dd>
           {% if h.profile_url %}<a href="{{ h.profile_url }}">{{ h.handle }}</a>{% else %}{{ h.handle }}{% endif %}
-          <div class="row-sub">{{ h.follower_count | compact }} followers</div>
+          {% if h.follower_count %}<div class="row-sub">{{ h.follower_count | compact }} followers</div>{% endif %}
         </dd>
         {% endfor %}
       </dl>
@@ -98,19 +98,57 @@
     <div class="panel" style="margin-top: var(--space-16)">
       <p class="eyebrow">Recruitment</p>
       <dl class="kv">
-        <dt>Source</dt><dd>{{ creator.recruitment_source | capitalize }}</dd>
-        <dt>Added</dt><dd>{{ creator.created_at | shortdate }}</dd>
+        <dt>Source</dt><dd>{{ creator.source_label }}</dd>
+        {% if creator.onboarded_on %}
+        <dt>Onboarded</dt><dd>{{ creator.onboarded_on | shortdate }}</dd>
+        {% endif %}
+        {% if creator.recruited_by %}
+        <dt>Referred by</dt>
+        <dd><a href="{{ url_for('creator_detail', creator_id=creator.recruited_by.id) }}">{{ creator.recruited_by.name }}</a></dd>
+        {% elif creator.recruited_by_note %}
+        <dt>Referred by</dt>
+        <dd>{{ creator.recruited_by_note }}
+          <div class="row-sub">Not matched to a creator</div>
+        </dd>
+        {% endif %}
       </dl>
       {% if creator.recruitment_note %}
       <p class="row-sub" style="margin: var(--space-16) 0 0">{{ creator.recruitment_note }}</p>
       {% endif %}
+      {% if creator.notes %}
+      <p class="row-sub" style="margin: var(--space-8) 0 0">{{ creator.notes }}</p>
+      {% endif %}
     </div>
+
+    {% if creator.recruits %}
+    <div class="panel" style="margin-top: var(--space-16)">
+      <p class="eyebrow">Referred in ({{ creator.recruits | length }})</p>
+      <dl class="kv">
+        {% for r in creator.recruits | sort(attribute='name') %}
+        <dd style="grid-column: 1 / -1">
+          <a href="{{ url_for('creator_detail', creator_id=r.id) }}">{{ r.name }}</a>
+        </dd>
+        {% endfor %}
+      </dl>
+    </div>
+    {% endif %}
+
+    {% if creator.link_list %}
+    <div class="panel" style="margin-top: var(--space-16)">
+      <p class="eyebrow">Other links</p>
+      {% for link in creator.link_list %}
+      <div style="margin-bottom: var(--space-4)">
+        <a href="{{ link }}" style="font-size:12px; word-break:break-all">{{ link }}</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="panel" style="margin-top: var(--space-16)">
       <p class="eyebrow">Payment</p>
       <dl class="kv">
-        <dt>Method</dt><dd>{{ creator.payment_method | capitalize }}</dd>
-        <dt>Send to</dt><dd>{{ creator.payment_handle }}</dd>
+        <dt>Method</dt><dd>{{ creator.payment_method | capitalize if creator.payment_method else '—' }}</dd>
+        <dt>Send to</dt><dd>{{ creator.payment_handle or '—' }}</dd>
       </dl>
       {% if creator.payment_note %}
       <p class="row-sub" style="margin: var(--space-16) 0 0">{{ creator.payment_note }}</p>

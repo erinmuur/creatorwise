@@ -21,15 +21,44 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
+# Platforms we track performance on. Campaign and UGC metrics only ever roll up
+# these three.
 PLATFORMS = ("instagram", "tiktok", "youtube")
+
+# Platforms a creator may have a handle on. Threads and X are here but not in
+# PLATFORMS: 21 creators in the real list have one, so dropping them would lose
+# real contact information, but no content is measured there.
+PROFILE_PLATFORMS = PLATFORMS + ("threads", "x")
+
 PLATFORM_LABELS = {
     "instagram": "Instagram",
     "tiktok": "TikTok",
     "youtube": "YouTube",
+    "threads": "Threads",
+    "x": "X",
 }
 
-# How a creator came to us. Kept as plain strings so new sources don't need a migration.
-RECRUITMENT_SOURCES = ("betawise", "outbound", "referral", "inbound", "agency")
+# How a creator came to us. These are the real categories from the recruitment
+# export, not invented ones: 215 referral, 57 outbound, 5 existing Readwise
+# users, 2 alpha testers, 1 inbound. Plain strings, so a new source is a
+# one-line change rather than a migration.
+RECRUITMENT_SOURCES = (
+    "referral",       # another creator referred them — by far the biggest channel
+    "outbound",       # cold outreach, DM or email
+    "inbound",        # they approached us
+    "existing_user",  # already a Readwise customer or affiliate
+    "alpha_tester",   # migrated from the Bookwise alpha
+    "agency",         # came via a talent agency
+)
+
+RECRUITMENT_LABELS = {
+    "referral": "Referral",
+    "outbound": "Cold outreach",
+    "inbound": "Inbound",
+    "existing_user": "Existing Readwise user",
+    "alpha_tester": "Alpha tester",
+    "agency": "Agency",
+}
 
 # Where a creator stands in a given campaign.
 PARTICIPATION_STATUSES = ("opted_in", "content_delivered", "no_show")
@@ -49,6 +78,23 @@ class Creator(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), nullable=False)
     email = db.Column(db.String(254), unique=True, nullable=False)
+    # Who referred them in. 214 of 280 creators came through another creator, so
+    # this is a real graph, not a note — a self-reference rather than free text.
+    # When the referrer couldn't be resolved to a creator (a first name only, or
+    # somebody outside the programme) the raw value is kept in
+    # recruited_by_note instead of being guessed at.
+    recruited_by_id = db.Column(db.Integer, db.ForeignKey("creators.id"))
+    recruited_by_note = db.Column(db.String(254))
+
+    # When they joined the programme, from the recruitment export. Distinct from
+    # created_at, which is when this row was written.
+    onboarded_on = db.Column(db.Date)
+
+    # Everything that isn't a tracked platform: linktree, Bluesky, Letterboxd,
+    # personal sites. Kept verbatim rather than parsed into columns nobody asked
+    # for; newline-separated.
+    links = db.Column(db.Text)
+
     recruitment_source = db.Column(db.String(32))
     recruitment_note = db.Column(db.Text)
     notes = db.Column(db.Text)
@@ -73,6 +119,39 @@ class Creator(db.Model):
         "UgcPiece", back_populates="creator",
         cascade="all, delete-orphan", lazy="selectin",
     )
+
+    # The recruitment graph. `recruited_by` is the creator who referred this one;
+    # `recruits` is everyone they brought in. remote_side points at the parent
+    # end of the self-join, which is what tells SQLAlchemy which way it runs.
+    # Named apart from `total_referrals` on purpose: that counts signups driven
+    # by content, this counts people. Conflating the two would be easy and wrong.
+    recruited_by = db.relationship(
+        "Creator", remote_side=[id], back_populates="recruits", lazy="selectin",
+    )
+    recruits = db.relationship(
+        "Creator", back_populates="recruited_by", lazy="selectin",
+    )
+
+    @property
+    def recruit_count(self):
+        return len(self.recruits)
+
+    @property
+    def recruited_by_label(self):
+        """Who brought them in — a linked creator, raw text, or nothing."""
+        if self.recruited_by:
+            return self.recruited_by.name
+        return self.recruited_by_note or None
+
+    @property
+    def source_label(self):
+        return RECRUITMENT_LABELS.get(
+            self.recruitment_source, self.recruitment_source or "—"
+        )
+
+    @property
+    def link_list(self):
+        return [l for l in (self.links or "").splitlines() if l.strip()]
 
     @property
     def total_referrals(self):

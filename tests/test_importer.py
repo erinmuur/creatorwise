@@ -97,8 +97,11 @@ class ParsingTests(unittest.TestCase):
             self.assertEqual(importer.normalize_header(raw), "instagram handle")
 
     def test_synonyms(self):
-        self.assertEqual(importer.parse_source("Beta Tester"), "betawise")
+        self.assertEqual(importer.parse_source("Referral"), "referral")
+        self.assertEqual(importer.parse_source("Cold outreach"), "outbound")
         self.assertEqual(importer.parse_source("Cold DM"), "outbound")
+        self.assertEqual(importer.parse_source("Existing Readwise user"), "existing_user")
+        self.assertEqual(importer.parse_source("Alpha tester"), "alpha_tester")
         self.assertEqual(importer.parse_payment_method("PayPal"), "paypal")
         self.assertEqual(importer.parse_payment_method("Amazon Gift Card"), "gift_card")
         self.assertEqual(importer.parse_status("Ghosted"), "no_show")
@@ -128,7 +131,7 @@ class PlanTests(unittest.TestCase):
             "﻿Creator Name,Email Address,IG Handle,IG Followers,TikTok,"
             "TikTok Followers,Source,Status,Pay via,PayPal Email,Vibe\n"
             "Bea Hall,BEA@example.com,https://www.instagram.com/bea.reads/,"
-            "12.4K,@beatok,1.2M,Beta Tester,Posted,PayPal,bea@example.com,sweet\n"
+            "12.4K,@beatok,1.2M,Referral,Posted,PayPal,bea@example.com,sweet\n"
             "Dana Lu,dana@example.com,@danareads,890,—,—,Cold DM,Ghosted,Venmo,,quiet\n"
         )
         result = importer.plan(csv_text, campaign_slug="fall-2025-sticker-beta")
@@ -140,7 +143,7 @@ class PlanTests(unittest.TestCase):
 
         bea = result.rows[0]
         self.assertEqual(bea.email, "bea@example.com")
-        self.assertEqual(bea.fields["recruitment_source"], "betawise")
+        self.assertEqual(bea.fields["recruitment_source"], "referral")
         self.assertEqual(bea.fields["payment_method"], "paypal")
         self.assertEqual(bea.status, "content_delivered")
         handles = {h["platform"]: h for h in bea.handles}
@@ -231,6 +234,170 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(result.counts["blocked"], 0)
 
 
+class RecruiterTests(unittest.TestCase):
+    """Resolving the referred_by column into an actual graph.
+
+    214 of 280 rows in the real export name a referrer, and 204 of those are a
+    creator in the same file — so this is the difference between a text note and
+    something you can traverse.
+    """
+
+    CSV = (
+        "name,email,tiktok_url,source,referred_by\n"
+        "Wes Harlan,wil@example.com,https://www.tiktok.com/@wesreads,Cold outreach,\n"
+        "Nadia Moreau,nadia@example.com,https://www.tiktok.com/@nattiereads,Referral,Wes Harlan\n"
+        "Dev Okafor,dev@example.com,https://www.tiktok.com/@devreads,Referral,@nattiereads\n"
+        "Fern Walsh,fern.w@example.com,https://www.tiktok.com/@fernreads,Referral,Wes Harlan\n"
+        "Kira B,kira@example.com,,Referral,fernreads@example.com\n"
+        "Sam Price,sam1@example.com,,Referral,Wes Harlan\n"
+        "Sam Quinn,sam2@example.com,,Referral,Wes Harlan\n"
+        "Ash Lee,wren@example.com,,Referral,Sam\n"
+        "Robin Vale,robin@example.com,,Referral,Genevieve Harp\n"
+        "Joint Case,joint@example.com,,Referral,Wes Harlan + Nadia Moreau\n"
+    )
+
+    def setUp(self):
+        self.app = make_app()
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+        importer.apply(importer.plan(self.CSV))
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def by(self, email):
+        return Creator.query.filter_by(email=email).one()
+
+    def test_referrer_resolved_by_name(self):
+        self.assertEqual(self.by("nadia@example.com").recruited_by.name, "Wes Harlan")
+
+    def test_referrer_resolved_by_handle(self):
+        """'@nattiereads' is Nadia's TikTok handle, not her name."""
+        self.assertEqual(self.by("dev@example.com").recruited_by.name, "Nadia Moreau")
+
+    def test_referrer_resolved_by_email(self):
+        self.assertEqual(self.by("kira@example.com").recruited_by.name, "Fern Walsh")
+
+    def test_ambiguous_first_name_is_not_guessed(self):
+        """Two creators called Sam — picking one would be inventing a fact."""
+        wren = self.by("wren@example.com")
+        self.assertIsNone(wren.recruited_by)
+        self.assertEqual(wren.recruited_by_note, "Sam")
+
+    def test_referrer_outside_the_programme_is_kept_as_text(self):
+        robin = self.by("robin@example.com")
+        self.assertIsNone(robin.recruited_by)
+        self.assertEqual(robin.recruited_by_note, "Genevieve Harp")
+
+    def test_two_referrers_in_one_cell_is_kept_as_text(self):
+        joint = self.by("joint@example.com")
+        self.assertIsNone(joint.recruited_by)
+        self.assertIn("Wes Harlan", joint.recruited_by_note)
+
+    def test_recruits_is_the_reverse_edge(self):
+        wil_row = self.by("wil@example.com")
+        self.assertEqual(wil_row.recruit_count, 4)
+        self.assertIn("Nadia Moreau", {c.name for c in wil_row.recruits})
+        self.assertIsNone(wil_row.recruited_by)
+
+    def test_recruited_by_label_prefers_the_linked_creator(self):
+        self.assertEqual(self.by("nadia@example.com").recruited_by_label, "Wes Harlan")
+        self.assertEqual(self.by("wren@example.com").recruited_by_label, "Sam")
+
+    def test_a_self_reference_is_refused(self):
+        """A sheet typo naming someone as their own referrer would loop the graph."""
+        result = importer.plan(
+            "name,email,referred_by\nLoopy,loopy@example.com,Loopy\n"
+        )
+        importer.apply(result)
+        loopy = self.by("loopy@example.com")
+        self.assertIsNone(loopy.recruited_by_id)
+        self.assertEqual(loopy.recruited_by_note, "Loopy")
+
+    def test_plan_projects_resolution_before_writing(self):
+        db.session.query(Creator).delete()
+        db.session.commit()
+        result = importer.plan(self.CSV)
+        resolved, unresolved = result.recruiters
+        # 9 rows name a referrer. Six resolve: four by name, one by handle
+        # (@nattiereads), one by the local part of an email (fernreads@…).
+        # Three don't: "Sam" (two of them), someone outside the programme, and
+        # a cell naming two people.
+        self.assertEqual((resolved, unresolved), (6, 3))
+        self.assertIn("UNRESOLVED REFERRERS", importer.render(result))
+
+
+class ExtraColumnTests(unittest.TestCase):
+    """Columns the real export has that the first version didn't know about."""
+
+    def setUp(self):
+        self.app = make_app()
+        self.ctx = self.app.app_context()
+        self.ctx.push()
+        db.create_all()
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.ctx.pop()
+
+    def test_threads_and_x_become_handles(self):
+        importer.apply(importer.plan(
+            "name,email,threads_url,x_url\n"
+            "Adi,adi@example.com,https://www.threads.com/@aviinthelife,https://x.com/adi\n"
+        ))
+        handles = {h.platform: h.handle for h in Creator.query.one().handles}
+        self.assertEqual(handles["threads"], "@aviinthelife")
+        self.assertEqual(handles["x"], "@adi")
+
+    def test_threads_and_x_are_not_tracked_platforms(self):
+        """They're contact details — no content metrics roll up through them."""
+        from models import PLATFORMS, PROFILE_PLATFORMS
+        self.assertNotIn("threads", PLATFORMS)
+        self.assertIn("threads", PROFILE_PLATFORMS)
+
+    def test_youtube_channel_id_url(self):
+        """Legacy /channel/UC… has no @handle, but the id still identifies it."""
+        importer.apply(importer.plan(
+            "name,email,youtube_url\n"
+            "Rowan,rowan@example.com,https://www.youtube.com/channel/UCa1b2c3d4e5f6g7h8i9j0kL\n"
+        ))
+        handle = SocialHandle.query.one()
+        self.assertEqual(handle.handle, "UCa1b2c3d4e5f6g7h8i9j0kL")
+        self.assertIn("/channel/", handle.profile_url)
+
+    def test_onboarded_date_is_kept(self):
+        importer.apply(importer.plan(
+            "name,email,onboarded_date\nAdi,adi@example.com,2025-09-30\n"
+        ))
+        self.assertEqual(Creator.query.one().onboarded_on, date(2025, 9, 30))
+
+    def test_other_urls_are_split_one_per_line(self):
+        importer.apply(importer.plan(
+            "name,email,other_urls\n"
+            "Juno,j@example.com,https://linktr.ee/x; https://bsky.app/profile/y\n"
+        ))
+        self.assertEqual(
+            Creator.query.one().link_list,
+            ["https://linktr.ee/x", "https://bsky.app/profile/y"],
+        )
+
+    def test_real_source_vocabulary_round_trips(self):
+        importer.apply(importer.plan(
+            "name,email,source\n"
+            "A,a@example.com,Existing Readwise user\n"
+            "B,b@example.com,Alpha tester\n"
+            "C,c@example.com,Cold outreach\n"
+        ))
+        got = {c.name: (c.recruitment_source, c.source_label) for c in Creator.query.all()}
+        self.assertEqual(got["A"], ("existing_user", "Existing Readwise user"))
+        self.assertEqual(got["B"], ("alpha_tester", "Alpha tester"))
+        self.assertEqual(got["C"], ("outbound", "Cold outreach"))
+
+
 class ApplyTests(unittest.TestCase):
     def setUp(self):
         self.app = make_app()
@@ -251,7 +418,7 @@ class ApplyTests(unittest.TestCase):
 
     CSV = (
         "Name,Email,Instagram,IG Followers,Source,Pay via\n"
-        "Bea Hall,bea@example.com,@bea.reads,12.4K,Beta Tester,PayPal\n"
+        "Bea Hall,bea@example.com,@bea.reads,12.4K,Referral,PayPal\n"
         "Dana Lu,dana@example.com,@danareads,890,Cold DM,Venmo\n"
     )
 
@@ -265,7 +432,7 @@ class ApplyTests(unittest.TestCase):
 
         bea = Creator.query.filter_by(email="bea@example.com").one()
         self.assertEqual(bea.name, "Bea Hall")
-        self.assertEqual(bea.recruitment_source, "betawise")
+        self.assertEqual(bea.recruitment_source, "referral")
         self.assertEqual(bea.payment_method, "paypal")
 
         handle = SocialHandle.query.filter_by(creator_id=bea.id).one()
@@ -287,7 +454,7 @@ class ApplyTests(unittest.TestCase):
         self.run_import()
         updated_csv = (
             "Name,Email,Instagram,IG Followers,Source,Pay via\n"
-            "Bea Hall,bea@example.com,@bea.reads,19.8K,Beta Tester,PayPal\n"
+            "Bea Hall,bea@example.com,@bea.reads,19.8K,Referral,PayPal\n"
         )
         result = importer.plan(updated_csv)
         self.assertEqual(result.counts["update"], 1)
@@ -308,7 +475,7 @@ class ApplyTests(unittest.TestCase):
         importer.apply(importer.plan(sparse))
 
         bea = Creator.query.filter_by(email="bea@example.com").one()
-        self.assertEqual(bea.recruitment_source, "betawise")
+        self.assertEqual(bea.recruitment_source, "referral")
         self.assertEqual(bea.payment_method, "paypal")
         self.assertEqual(
             SocialHandle.query.filter_by(creator_id=bea.id).one().follower_count,

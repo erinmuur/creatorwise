@@ -38,7 +38,7 @@
           <span class="badge badge-platform">{{ h.platform_label }}</span>
           {% endfor %}
         </td>
-        <td class="row-sub">{{ c.recruitment_source | capitalize }}</td>
+        <td class="row-sub">{{ c.source_label }}</td>
         <td class="num">{{ c.follower_count | compact }}</td>
         <td class="num">{{ c.delivered_count }}</td>
         <td class="num">{{ c.total_referrals | thousands }}</td>

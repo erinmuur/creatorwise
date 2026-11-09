@@ -117,10 +117,33 @@ dry-runs unless given `--apply`.
   never guessed at — no email, no name, duplicate address in the same file.
 - Unrecognized columns are **reported**, not silently dropped.
 - The whole file commits in one transaction.
+- `referred_by` resolves to a real `recruited_by_id` link (name, then handle,
+  then email local part), in a second pass after every creator exists. Ambiguous
+  values stay in `recruited_by_note` — never guessed. Don't "improve" this by
+  taking the first match: four creators share the first name Sam.
+- `recruited_by` / `recruits` is the recruitment graph (people). `total_referrals`
+  is signups driven by content. Different things, named apart on purpose.
 - Known gap: `Creator.email` is unique and single, so a creator with two
-  addresses imports the first and warns about the second. Real in this data —
-  `bookshelfbea@example.com` and `bea.k@example.net` are one person.
-  Fixing it means a `creator_emails` table; don't bodge it in the importer.
+  addresses imports the first and warns about the second. This is real in the
+  data — at least one creator mails from two addresses. Fixing it means a
+  `creator_emails` table; don't bodge it in the importer.
+
+## Real data, and why none of it is in this repo
+
+**This repository is public** (it has to be — see deploy gotcha #2), so no real
+creator data goes in it. `data/` is gitignored, exports stay outside the repo,
+and tests use invented names with `example.com` addresses.
+
+That applies to fixtures, docstrings, comments, docs and commit messages alike.
+Real addresses were committed here once, picked up from live mail while building
+the inbox scanner, and had to be scrubbed on 2026-11-09 — they remain in git
+history.
+
+Currently loaded (locally only): 280 creators from the recruitment export,
+501 handles (234 TikTok, 198 Instagram, 48 YouTube, 17 Threads, 4 X), 209
+referral links. No campaign links — the export has no campaign column and
+onboarding dates span Jul 2025 to Jul 2026, so assigning everyone to one pilot
+would be fabrication. Content and payment details are still absent.
 
 ## The mail scanner
 

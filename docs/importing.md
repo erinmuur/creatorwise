@@ -73,6 +73,10 @@ Three things worth knowing about that output:
 | name | Name, Creator, Creator Name, Full Name, Display Name |
 | email | Email, Email Address, E-mail, Contact Email, Primary Email |
 | instagram / tiktok / youtube | the platform name, IG/TT/YT, "… Handle", "… URL", "… Username" |
+| threads / x | Threads, X, Twitter, "… URL" — stored as handles, but no metrics |
+| referred by | Referred By, Referrer, Recruited By, Invited By |
+| onboarded | Onboarded, Onboarded Date, Joined On, Date Onboarded |
+| other links | Other URLs, Links, Linktree, Website |
 | follower counts | "Instagram Followers", "IG Follower Count", "Subscribers", … |
 | recruitment source | Source, Recruited Via, Channel, How Recruited |
 | payment | Pay via, Payment Method, PayPal, Venmo, Payout Handle |
@@ -93,6 +97,10 @@ Values are normalized too:
 - **Status**: "Posted"/"Delivered" → content_delivered, "Ghosted"/"Declined" →
   no_show, "Confirmed"/"Yes" → opted_in.
 - **Dates**: `2025-09-15`, `09/15/2025`, `Sep 15, 2025`, `15 Sep 2025`.
+- **Source**: the real categories are Referral, Cold outreach, Existing Readwise
+  user, Inbound and Alpha tester. Anything else is kept verbatim as a note.
+- **YouTube**: legacy `/channel/UC…` URLs keep the channel id, since that is the
+  only identifier those channels have.
 - **Blanks**: `—`, `n/a`, `TBD`, `?`, `-` all count as empty.
 
 ## Re-running it
@@ -106,6 +114,26 @@ Safe, and the normal way to work. Creators are matched on lowercased email:
 
 So you can import a rough list now and re-import a fuller one later without
 losing anything or creating duplicates.
+
+## The referral graph
+
+`referred_by` isn't stored as a note — it's a link between creators. In the real
+list, 214 of 280 came in through someone else, and 204 of those referrers are
+creators in the same file. A profile shows who referred them and everyone they
+referred, both clickable.
+
+Referrer cells hold whatever got typed into the CRM, so resolution tries, in
+order: the creator's name, their handle, and the local part of an email address
+(people are often listed by their TikTok handle rather than their name).
+
+Anything ambiguous stays as text and is labelled "not matched" on the profile.
+From the real import, five of 214 didn't resolve — three were a first name
+shared by several creators, one named somebody outside the programme, and one
+cell named two people. Picking one of four creators called Sam would have been
+inventing a fact.
+
+Fix those by making the sheet unambiguous and re-importing, or set them by hand.
+A creator named as their own referrer is refused — that would loop the graph.
 
 ## Two things it deliberately won't do
 
@@ -124,3 +152,13 @@ if it's common in your data; tell me how often it comes up.
 
 It can't. The whole file commits in one transaction, so a failure leaves the
 database exactly as it was. Fix the sheet and run it again.
+
+
+## A note on privacy
+
+This repository is **public** — it has to be, or contextone can't deploy it.
+
+So no real creator data goes in it. The database is gitignored, exports stay
+outside the repo, and tests use invented names and `example.com` addresses.
+Real names, emails and handles don't belong in fixtures, docs, comments or
+commit messages either, where they're just as public and much harder to remove.

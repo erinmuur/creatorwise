@@ -60,8 +60,20 @@ ALIASES = {
         "channel", "how recruited", "acquisition source",
     ],
     "recruitment_note": [
-        "recruitment note", "source note", "how we found them", "referred by",
+        "recruitment note", "source note", "how we found them",
         "recruitment notes",
+    ],
+    "recruited_by": [
+        "referred by", "referrer", "recruited by", "invited by", "referred from",
+        "referral source",
+    ],
+    "onboarded_on": [
+        "onboarded", "onboarded date", "onboarded on", "onboarding date",
+        "date onboarded", "joined on",
+    ],
+    "links": [
+        "other urls", "other links", "links", "other social", "website",
+        "linktree", "other profiles",
     ],
     "notes": ["notes", "note", "comments", "internal notes", "remarks"],
     "payment_method": [
@@ -84,6 +96,8 @@ ALIASES = {
         "youtube", "yt", "youtube handle", "youtube channel", "youtube url",
         "youtube link", "channel url",
     ],
+    "threads": ["threads", "threads handle", "threads url", "threads link"],
+    "x": ["x", "x url", "x handle", "twitter", "twitter handle", "twitter url"],
     "instagram_followers": [
         "instagram followers", "ig followers", "instagram follower count",
         "ig follower count", "instagram reach",
@@ -113,10 +127,14 @@ ALIASES = {
 # Built once: normalized header -> our field name.
 _HEADER_MAP = {alias: field for field, names in ALIASES.items() for alias in names}
 
+# platform -> (handle column, follower column). Threads and X have no follower
+# column because nothing measures them; they're contact details, not channels.
 PLATFORM_FIELDS = {
     "instagram": ("instagram", "instagram_followers"),
     "tiktok": ("tiktok", "tiktok_followers"),
     "youtube": ("youtube", "youtube_followers"),
+    "threads": ("threads", None),
+    "x": ("x", None),
 }
 
 # Values that mean "blank" in a hand-maintained sheet.
@@ -188,8 +206,13 @@ def parse_followers(value):
 
 
 _HANDLE_FROM_URL = re.compile(
-    r"(?:instagram\.com|tiktok\.com|youtube\.com|youtu\.be)/+(?:@)?([^/?#\s]+)", re.I
+    r"(?:instagram\.com|tiktok\.com|youtube\.com|youtu\.be|threads\.(?:net|com)"
+    r"|x\.com|twitter\.com)/+(?:@)?([^/?#\s]+)", re.I
 )
+
+# YouTube's legacy form: /channel/UC... is a channel id, not an @handle. It's
+# still the channel's only identifier, so keep it rather than dropping the row.
+_YT_CHANNEL = re.compile(r"youtube\.com/+channel/+(UC[A-Za-z0-9_-]{20,})", re.I)
 # Path segments that are the site's own, not somebody's handle.
 _NOT_A_HANDLE = {"p", "reel", "reels", "tv", "watch", "shorts", "channel", "c", "user"}
 
@@ -201,6 +224,11 @@ def parse_handle(value):
         return None, None
 
     url = text if re.match(r"^https?://", text, re.I) else None
+
+    channel = _YT_CHANNEL.search(text)
+    if channel:
+        return channel.group(1), url or ("https://" + text.lstrip("/"))
+
     match = _HANDLE_FROM_URL.search(text)
     if match:
         handle = match.group(1)
@@ -238,12 +266,15 @@ def parse_date(value):
 
 
 SOURCE_SYNONYMS = {
-    "betawise": "betawise", "beta": "betawise", "beta wise": "betawise",
-    "beta tester": "betawise", "sticker beta": "betawise",
-    "outbound": "outbound", "cold outreach": "outbound", "outreach": "outbound",
-    "dm": "outbound", "cold dm": "outbound", "prospected": "outbound",
     "referral": "referral", "referred": "referral", "word of mouth": "referral",
     "friend": "referral",
+    "existing readwise user": "existing_user", "existing user": "existing_user",
+    "readwise user": "existing_user", "readwise affiliate": "existing_user",
+    "affiliate": "existing_user", "existing customer": "existing_user",
+    "alpha tester": "alpha_tester", "alpha": "alpha_tester",
+    "beta tester": "alpha_tester", "beta": "alpha_tester",
+    "outbound": "outbound", "cold outreach": "outbound", "outreach": "outbound",
+    "dm": "outbound", "cold dm": "outbound", "prospected": "outbound",
     "inbound": "inbound", "applied": "inbound", "reached out": "inbound",
     "application": "inbound", "waitlist": "inbound",
     "agency": "agency", "talent agency": "agency", "managed": "agency",
@@ -333,6 +364,96 @@ def read_rows(text):
     return rows, mapped, unmapped, duplicate_headers
 
 
+# --- resolving who referred whom ----------------------------------------------
+
+# A referrer cell holds whatever the person filling in the CRM typed: usually a
+# creator's name, sometimes their handle, once an email address, and sometimes
+# just "Sam". Resolve what can be resolved exactly; keep the rest as text.
+#
+# The rule is the same one the rest of this module follows: an ambiguous value
+# is never guessed. There are four creators called Sam, so "Sam" stays text.
+
+_JOINED = re.compile(r"\s+(?:\+|&|and)\s+", re.I)
+
+
+class Lookup:
+    """Name / email / handle -> creator key, for resolving referrers."""
+
+    def __init__(self):
+        self.by_name = {}
+        self.by_email = {}
+        self.by_handle = {}
+
+    @staticmethod
+    def _add(table, key, value):
+        table.setdefault(key, set()).add(value)
+
+    def add(self, key, name, email, handles):
+        if name:
+            self._add(self.by_name, name.strip().casefold(), key)
+        if email:
+            self.by_email[email.strip().lower()] = key
+        for handle in handles or []:
+            if handle:
+                self._add(self.by_handle, handle.lstrip("@").casefold(), key)
+
+    def resolve(self, raw):
+        """Return (key, note). Exactly one of them is meaningful."""
+        text = clean(raw)
+        if not text:
+            return None, ""
+
+        if _JOINED.search(text):
+            return None, text  # "Alys Tolan + Rune Pryor" — two people
+
+        if "@" in text and "." in text.split("@")[-1]:
+            email = text.lower()
+            if email in self.by_email:
+                return self.by_email[email], ""
+            # Not one of ours, but the local part is often the handle:
+            # "fernreads@example.com" is @fernreads on TikTok.
+            local = email.split("@")[0]
+            hits = self.by_handle.get(local)
+            if hits and len(hits) == 1:
+                return next(iter(hits)), ""
+            return None, text
+
+        if text.startswith("@"):
+            hits = self.by_handle.get(text[1:].casefold())
+            if hits and len(hits) == 1:
+                return next(iter(hits)), ""
+            return None, text
+
+        hits = self.by_name.get(text.casefold())
+        if hits and len(hits) == 1:
+            return next(iter(hits)), ""
+        if hits:
+            return None, text  # more than one creator by that name
+        return None, text
+
+
+def lookup_from_db():
+    index = Lookup()
+    for creator in Creator.query.all():
+        index.add(
+            creator.email.lower(), creator.name, creator.email,
+            [h.handle for h in creator.handles],
+        )
+    return index
+
+
+def lookup_from_plan(plan_result):
+    """DB plus the rows about to be created — a referrer is usually in the same file."""
+    index = lookup_from_db()
+    for row in plan_result.rows:
+        if row.action != "blocked":
+            index.add(
+                row.email, row.fields.get("name", row.name), row.email,
+                [h["handle"] for h in row.handles],
+            )
+    return index
+
+
 # --- the plan -----------------------------------------------------------------
 
 @dataclass
@@ -349,6 +470,8 @@ class RowPlan:
     warnings: list = field(default_factory=list)
     existing_id: int = None
     changes: dict = field(default_factory=dict)   # field -> (old, new)
+    recruiter_raw: str = ""       # whatever the referrer cell said
+    recruiter_key: str = None     # resolved creator (their email), or None
 
 
 @dataclass
@@ -374,6 +497,13 @@ class ImportPlan:
     def ok(self):
         return not self.campaign_error
 
+    @property
+    def recruiters(self):
+        """(resolved, unresolved) counts for rows naming a referrer."""
+        named = [r for r in self.rows if r.action != "blocked" and r.recruiter_raw]
+        resolved = sum(1 for r in named if r.recruiter_key)
+        return resolved, len(named) - resolved
+
 
 # Creator columns a row may set, in the order they're reported.
 CREATOR_FIELDS = (
@@ -394,8 +524,8 @@ def _row_handles(values, warnings):
         if not handle:
             continue
 
-        followers = parse_followers(values.get(follower_col))
-        raw_followers = clean(values.get(follower_col))
+        followers = parse_followers(values.get(follower_col)) if follower_col else None
+        raw_followers = clean(values.get(follower_col)) if follower_col else ""
         if raw_followers and followers is None:
             warnings.append(
                 f"{platform} followers: couldn't read {raw_followers!r}, left empty"
@@ -408,16 +538,24 @@ def _row_handles(values, warnings):
         })
 
     # A single "Followers" column only makes sense when there's one platform to
-    # attribute it to. With two, guessing would invent data.
+    # attribute it to. With two, guessing would invent data. Only measured
+    # platforms count here — a Threads handle doesn't make the number ambiguous,
+    # because nothing tracks followers there anyway.
     if general is not None:
-        without = [h for h in out if h["follower_count"] is None]
-        if len(out) == 1:
-            out[0]["follower_count"] = out[0]["follower_count"] or general
-        elif without:
+        measured = [h for h in out if h["platform"] in PLATFORMS]
+        if len(measured) == 1:
+            if measured[0]["follower_count"] is None:
+                measured[0]["follower_count"] = general
+        elif any(h["follower_count"] is None for h in measured):
             warnings.append(
-                f"followers={general:,} not applied: "
-                f"{len(out)} platforms on this row, can't tell which it refers to"
+                f"followers={general:,} not applied: {len(measured)} tracked "
+                "platforms on this row, can't tell which it refers to"
             )
+        elif not measured:
+            warnings.append(
+                f"followers={general:,} not applied: no tracked platform on this row"
+            )
+
     return out
 
 
@@ -511,7 +649,24 @@ def plan(text, campaign_slug=None):
                 # Don't let a note parsed above get clobbered by an empty column.
                 fields[key] = value if key not in fields else f"{fields[key]} · {value}"
 
+        onboarded = parse_date(values.get("onboarded_on"))
+        raw_onboarded = clean(values.get("onboarded_on"))
+        if raw_onboarded and not onboarded:
+            warnings.append(f"couldn't read onboarded date {raw_onboarded!r}")
+        if onboarded:
+            fields["onboarded_on"] = onboarded
+
+        extra_links = clean(values.get("links"))
+        if extra_links:
+            # Sheets separate these with "; " — one per line reads better and
+            # keeps them intact rather than parsing into columns nobody asked for.
+            fields["links"] = "\n".join(
+                part.strip() for part in re.split(r"[;,]\s*", extra_links)
+                if part.strip()
+            )
+
         handles = _row_handles(values, warnings)
+        recruiter_raw = clean(values.get("recruited_by"))
 
         status = parse_status(values.get("status"))
         raw_status = clean(values.get("status"))
@@ -530,7 +685,7 @@ def plan(text, campaign_slug=None):
         row = RowPlan(
             line=line, action="create", name=name, email=email,
             fields=fields, handles=handles, status=status or "opted_in",
-            opted_in_on=opted, warnings=warnings,
+            opted_in_on=opted, warnings=warnings, recruiter_raw=recruiter_raw,
         )
 
         if existing:
@@ -561,6 +716,15 @@ def plan(text, campaign_slug=None):
             row.action = "update" if changes else "unchanged"
 
         result.rows.append(row)
+
+    # Referrers are resolved against the file as well as the database, because
+    # the person who referred someone is usually a few rows away in the same
+    # export. This is a projection for the report; apply() redoes it against
+    # real rows once they exist.
+    index = lookup_from_plan(result)
+    for row in result.rows:
+        if row.action != "blocked" and row.recruiter_raw:
+            row.recruiter_key, _ = index.resolve(row.recruiter_raw)
 
     return result
 
@@ -641,6 +805,37 @@ def apply(plan_result):
                     if row.opted_in_on:
                         link.opted_in_on = row.opted_in_on
 
+        # Second pass: now that every creator in this file exists, link up who
+        # referred whom. It can't happen in the first pass — a referrer is often
+        # a row further down the file, and would not yet have an id.
+        db.session.flush()
+        index = lookup_from_db()
+        linked = unresolved = 0
+
+        for row in plan_result.rows:
+            if row.action == "blocked" or not row.recruiter_raw:
+                continue
+            creator = Creator.query.filter(
+                db.func.lower(Creator.email) == row.email
+            ).first()
+            if creator is None:
+                continue
+
+            key, note = index.resolve(row.recruiter_raw)
+            referrer = (
+                Creator.query.filter(db.func.lower(Creator.email) == key).first()
+                if key else None
+            )
+            # Guard against a self-reference from a sheet typo; it would make
+            # the graph lie and any traversal of it loop.
+            if referrer is not None and referrer.id != creator.id:
+                creator.recruited_by_id = referrer.id
+                creator.recruited_by_note = None
+                linked += 1
+            else:
+                creator.recruited_by_note = note or row.recruiter_raw
+                unresolved += 1
+
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -651,6 +846,8 @@ def apply(plan_result):
         "updated": updated,
         "participations": participations,
         "blocked": len(plan_result.of("blocked")),
+        "recruiters_linked": linked,
+        "recruiters_unresolved": unresolved,
     }
 
 
@@ -686,6 +883,10 @@ def render(plan_result, verbose=False):
     if plan_result.campaign:
         add(f"All imported creators joined to campaign: {plan_result.campaign.name}")
 
+    linked, unresolved = plan_result.recruiters
+    if linked or unresolved:
+        add(f"Referrers: {linked} resolved to a creator, {unresolved} kept as text")
+
     blocked = plan_result.of("blocked")
     if blocked:
         add("")
@@ -701,6 +902,16 @@ def render(plan_result, verbose=False):
         for row in warned:
             for warning in row.warnings:
                 add(f"    line {row.line}: {row.name} — {warning}")
+
+    stuck = [
+        r for r in plan_result.rows
+        if r.action != "blocked" and r.recruiter_raw and not r.recruiter_key
+    ]
+    if stuck:
+        add("")
+        add(f"UNRESOLVED REFERRERS ({len(stuck)}) — kept as text, not linked:")
+        for row in stuck:
+            add(f"    line {row.line}: {row.name} <- {row.recruiter_raw!r}")
 
     updates = plan_result.of("update")
     if updates:
@@ -763,7 +974,9 @@ def main(argv=None):
         print(
             f"\nDone: {summary['created']} created, {summary['updated']} updated, "
             f"{summary['participations']} campaign links added, "
-            f"{summary['blocked']} skipped."
+            f"{summary['blocked']} skipped.\n"
+            f"Referrers: {summary['recruiters_linked']} linked, "
+            f"{summary['recruiters_unresolved']} kept as text."
         )
         return 0
 

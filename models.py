@@ -60,16 +60,59 @@ RECRUITMENT_LABELS = {
     "agency": "Agency",
 }
 
-# Where a creator stands in a given campaign.
-PARTICIPATION_STATUSES = ("opted_in", "content_delivered", "no_show")
+# Where a creator stands in a given campaign, in funnel order. A campaign is
+# worked as a pipeline — contacted, replied, briefed, posted — and the outreach
+# sheet records every stage, not just the end of it. Keeping them apart is the
+# difference between "113 people didn't deliver" and "97 of them were never
+# briefed in the first place".
+PARTICIPATION_STATUSES = (
+    "not_contacted",      # on the list; nobody has reached out yet
+    "contacted",          # reached out to, never replied
+    "opted_in",           # said yes; nothing scheduled or sent yet
+    "wave_2",             # volunteered for, or pushed to, a later wave
+    "briefed",            # had the briefing; hasn't posted
+    "content_delivered",  # posted
+    "declined",           # said no
+    "no_show",            # agreed, then went quiet
+)
 PARTICIPATION_LABELS = {
+    "not_contacted": "Not contacted",
+    "contacted": "Contacted",
     "opted_in": "Opted in",
+    "wave_2": "Wave 2",
+    "briefed": "Briefed",
     "content_delivered": "Delivered",
+    "declined": "Declined",
     "no_show": "No show",
 }
 
+# Statuses that mean we are still expecting content from them.
+PENDING_STATUSES = ("opted_in", "wave_2", "briefed")
+
+# The follow-up list, most actionable first: somebody who has been briefed is
+# one nudge from delivering, somebody who declined is not. This is deliberately
+# not the funnel order — that one runs coldest-to-warmest, which is the wrong
+# way round for a list you work through.
+FOLLOW_UP_ORDER = (
+    "briefed", "wave_2", "opted_in", "contacted", "not_contacted",
+    "no_show", "declined",
+)
+
 # The window used for the campaign referral metric.
 REFERRAL_WINDOW_DAYS = 14
+
+# A snapshot window of 0 means "as reported" — a referral count copied from a
+# spreadsheet with no measurement window attached to it. It is kept distinct
+# from a real 14-day figure so the two are never summed as if they were the
+# same measurement, and so the UI can say which it is showing.
+REPORTED_WINDOW = 0
+
+# How a piece of content reached us.
+DISCOVERY_LABELS = {
+    "manual": "Added by hand",
+    "email": "Inbox scan",
+    "crm_export": "CRM export",
+}
 
 
 class Creator(db.Model):
@@ -107,6 +150,10 @@ class Creator(db.Model):
 
     created_at = db.Column(db.Date, default=date.today)
 
+    emails = db.relationship(
+        "CreatorEmail", back_populates="creator",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
     handles = db.relationship(
         "SocialHandle", back_populates="creator",
         cascade="all, delete-orphan", lazy="selectin",
@@ -117,6 +164,10 @@ class Creator(db.Model):
     )
     ugc = db.relationship(
         "UgcPiece", back_populates="creator",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
+    campaign_referrals = db.relationship(
+        "CampaignReferral", back_populates="creator",
         cascade="all, delete-orphan", lazy="selectin",
     )
 
@@ -150,11 +201,43 @@ class Creator(db.Model):
         )
 
     @property
+    def shares_address(self):
+        """True when somebody else is on one of this creator's addresses."""
+        for row in self.emails:
+            if len(row.creator.emails) and CreatorEmail.query.filter(
+                CreatorEmail.address == row.address,
+                CreatorEmail.creator_id != self.id,
+            ).first():
+                return True
+        return False
+
+    @property
+    def all_emails(self):
+        """Every address for this creator, primary first."""
+        extra = sorted(
+            (e.address for e in self.emails
+             if e.address.lower() != (self.email or "").lower()),
+        )
+        return ([self.email] if self.email else []) + extra
+
+    @property
+    def other_emails(self):
+        """Addresses besides the primary — usually none."""
+        return self.all_emails[1:]
+
+    @property
     def link_list(self):
         return [l for l in (self.links or "").splitlines() if l.strip()]
 
     @property
     def total_referrals(self):
+        """Prefers per-campaign windowed totals; falls back to per-piece.
+
+        A creator can have referrals and no content at all, so this must not
+        be a sum over their videos.
+        """
+        if self.campaign_referrals:
+            return sum(r.referrals for r in self.campaign_referrals)
         return sum(p.referrals for p in self.ugc)
 
     @property
@@ -172,6 +255,46 @@ class Creator(db.Model):
 
     def __repr__(self):
         return f"<Creator {self.name}>"
+
+
+class CreatorEmail(db.Model):
+    """Every address we know for a creator, including the primary one.
+
+    `Creator.email` stays the primary and stays unique — it's what the rest of
+    the app, the inbox matcher and both importers key on. This table is the
+    rest: the second address somebody mails from, the personal one beside the
+    business one, the address a later sheet uses for a creator already in the
+    list under a different one.
+
+    That last case is why this exists. Matching an import on the primary alone
+    produced a duplicate creator for somebody already in the database, and
+    "import the first address and warn about the second" quietly loses the
+    information needed to avoid it next time.
+    """
+
+    __tablename__ = "creator_emails"
+    __table_args__ = (db.UniqueConstraint("creator_id", "address"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    creator_id = db.Column(db.Integer, db.ForeignKey("creators.id"), nullable=False)
+    # NOT unique. One address usually belongs to one person, and a sheet that
+    # puts the same address on two names is usually an error — but not always:
+    # a duo running one channel share a mailbox, and both are real creators
+    # with their own names. Unique here forced them into one record.
+    #
+    # The cost is that a shared address stops being a unique key, so matching
+    # must treat it as ambiguous rather than picking whoever comes first. See
+    # CreatorIndex._email_signals.
+    address = db.Column(db.String(254), nullable=False, index=True)
+    is_primary = db.Column(db.Boolean, default=False, nullable=False)
+    # Where it came from — which sheet, or "recruitment export". Free text.
+    source = db.Column(db.String(120))
+    created_at = db.Column(db.Date, default=date.today)
+
+    creator = db.relationship("Creator", back_populates="emails")
+
+    def __repr__(self):
+        return f"<CreatorEmail {self.address}>"
 
 
 class SocialHandle(db.Model):
@@ -213,10 +336,44 @@ class Campaign(db.Model):
         "UgcPiece", back_populates="campaign",
         cascade="all, delete-orphan", lazy="selectin",
     )
+    referral_totals = db.relationship(
+        "CampaignReferral", back_populates="campaign",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
 
     @property
     def creator_count(self):
         return len(self.participations)
+
+    # --- the funnel, as cumulative counts ------------------------------------
+    # These narrow rather than partition: everyone who delivered also opted in,
+    # and everyone who opted in was also contacted. The per-status breakdown in
+    # status_counts is the disjoint view; these three are the headline.
+
+    @property
+    def contacted_count(self):
+        """Everyone we actually reached out to.
+
+        Not simply everyone on the list: a campaign can carry people nobody
+        has approached yet, and counting them as contacted overstates the
+        reach and understates the opt-in rate.
+        """
+        return sum(
+            1 for p in self.participations if p.status != "not_contacted"
+        )
+
+    @property
+    def opted_in_count(self):
+        """Everyone who said yes — contacted, minus no-replies and declines.
+
+        `contacted` as a *status* means the opposite of this one: reached out
+        to and never heard from again. As a *metric*, "contacted" is everybody
+        we approached. Don't collapse the two.
+        """
+        return sum(
+            1 for p in self.participations
+            if p.status not in ("not_contacted", "contacted", "declined")
+        )
 
     @property
     def delivered_count(self):
@@ -224,17 +381,114 @@ class Campaign(db.Model):
 
     @property
     def total_referrals(self):
+        """Prefers the per-creator windowed totals when they exist.
+
+        Those are counted against a stated window from the source of truth;
+        the per-piece snapshots are whatever a spreadsheet said. Never sum
+        both — they measure the same thing twice.
+        """
+        if self.referral_totals:
+            return sum(r.referrals for r in self.referral_totals)
         return sum(p.referrals for p in self.ugc)
+
+    @property
+    def referral_window(self):
+        """The window the referral totals were counted over, if they agree."""
+        windows = {
+            (r.window_from, r.window_to) for r in self.referral_totals
+            if r.window_from and r.window_to
+        }
+        return next(iter(windows)) if len(windows) == 1 else None
+
+    @property
+    def referral_window_label(self):
+        window = self.referral_window
+        if not window:
+            return None
+        start, end = window
+        return f"{start:%b %-d} – {end:%b %-d, %Y}"
+
+    @property
+    def credited_count(self):
+        """How many creators have a referral number for this campaign."""
+        return sum(1 for r in self.referral_totals if r.referrals)
 
     @property
     def total_engagement(self):
         return sum(p.engagement for p in self.ugc)
 
     @property
+    def status_counts(self):
+        """Participants by status, in funnel order, skipping empty ones."""
+        counts = {}
+        for part in self.participations:
+            counts[part.status] = counts.get(part.status, 0) + 1
+        return [
+            (status, PARTICIPATION_LABELS.get(status, status), counts[status])
+            for status in PARTICIPATION_STATUSES if status in counts
+        ]
+
+    @property
+    def referrals_are_reported(self):
+        """True when no piece here carries a real measurement window.
+
+        The campaign total is then a sum of numbers copied off a sheet, and
+        labelling it "14 days after post" would be inventing a methodology.
+        """
+        if self.referral_totals:
+            return False
+        pieces = [p for p in self.ugc if p.referral_snapshots]
+        return bool(pieces) and not any(p.has_window_referrals for p in pieces)
+
+    @property
+    def briefed_count(self):
+        """Everyone who got as far as a briefing, delivered or not.
+
+        Delivering implies having been briefed, so the delivered are counted
+        here too — but only `records_briefing` says whether that number means
+        anything beyond "the people who posted".
+        """
+        return sum(
+            1 for p in self.participations
+            if p.status in ("briefed", "content_delivered", "no_show")
+        )
+
+    @property
+    def records_briefing(self):
+        """Did this campaign's source actually track who was briefed?
+
+        Without an explicit `briefed` row somewhere, `briefed_count` collapses
+        to `delivered_count` and claims a 100% follow-through that only means
+        "we have no idea who else was briefed". Two of the three campaigns
+        here are in exactly that position.
+        """
+        return any(p.status == "briefed" for p in self.participations)
+
+    @property
+    def commitment_count(self):
+        """The strongest commitment this campaign can actually evidence.
+
+        Briefed where briefing was tracked; opted in otherwise. Opting in is
+        cheap — 143 people said yes to the softlaunch and 52 were briefed —
+        so where the stronger number exists it is the one worth showing.
+        """
+        return self.briefed_count if self.records_briefing else self.opted_in_count
+
+    @property
+    def commitment_label(self):
+        return "Briefed" if self.records_briefing else "Opted in"
+
+    @property
     def delivery_rate(self):
-        if not self.participations:
+        """Delivered as a share of the people who committed.
+
+        Measured against whatever commitment the campaign can evidence, so a
+        campaign that never tracked briefing doesn't report 100% follow-through
+        by dividing the deliverers by themselves.
+        """
+        if not self.commitment_count:
             return 0
-        return round(100 * self.delivered_count / len(self.participations))
+        return round(100 * self.delivered_count / self.commitment_count)
 
     def __repr__(self):
         return f"<Campaign {self.slug}>"
@@ -263,6 +517,14 @@ class Participation(db.Model):
     def pieces(self):
         """This creator's UGC for this campaign."""
         return [p for p in self.creator.ugc if p.campaign_id == self.campaign_id]
+
+    @property
+    def referrals(self):
+        """Referrals credited to this creator for this campaign, or None."""
+        for row in self.creator.campaign_referrals:
+            if row.campaign_id == self.campaign_id:
+                return row.referrals
+        return None
 
 
 class UgcPiece(db.Model):
@@ -294,6 +556,27 @@ class UgcPiece(db.Model):
         "ReferralSnapshot", back_populates="piece",
         cascade="all, delete-orphan", lazy="selectin",
     )
+
+    @property
+    def discovery_label(self):
+        return DISCOVERY_LABELS.get(
+            self.discovered_via, (self.discovered_via or "").replace("_", " ")
+        )
+
+    @property
+    def display_title(self):
+        """What to show when the piece has no title.
+
+        Most pieces don't have one: a CRM export is a list of links, and the
+        title field stays empty rather than being filled with something nobody
+        wrote. This builds a label out of facts we do have instead.
+        """
+        if self.title:
+            return self.title
+        platforms = sorted({p.platform_label for p in self.posts})
+        where = " + ".join(platforms) if platforms else "Content"
+        when = self.posted_on.strftime("%b %Y") if self.posted_on else None
+        return f"{where} post, {when}" if when else f"{where} post"
 
     @property
     def likes(self):
@@ -333,6 +616,13 @@ class UgcPiece(db.Model):
         if windowed:
             return max(s.referrals for s in windowed)
         return max(s.referrals for s in self.referral_snapshots)
+
+    @property
+    def has_window_referrals(self):
+        """True when a real 14-day measurement exists, not just a copied total."""
+        return any(
+            s.window_days == REFERRAL_WINDOW_DAYS for s in self.referral_snapshots
+        )
 
     @property
     def referrals_are_final(self):
@@ -462,6 +752,53 @@ class ReferralSnapshot(db.Model):
     measured_at = db.Column(db.Date)
 
     piece = db.relationship("UgcPiece", back_populates="referral_snapshots")
+
+    @property
+    def window_label(self):
+        if self.window_days == REPORTED_WINDOW:
+            return "As reported"
+        return f"{self.window_days} days"
+
+
+class CampaignReferral(db.Model):
+    """Signups credited to one creator for one campaign, over a stated window.
+
+    Referrals are earned by a person in a campaign, not by a particular video:
+    the source counts invite-code redemptions per account, and a creator who
+    posted three videos — or none at all — still has one number. Hanging that
+    number off a UgcPiece meant picking an arbitrary piece to carry it, and
+    dropped it entirely for creators with no content (the real export has one
+    creator with 25 referrals and nothing posted).
+
+    The window is stored with the count, because "how many referrals" is
+    meaningless without "between when and when", and because a later refresh
+    over a different window must not look like the same measurement.
+
+    `UgcPiece.referral_snapshots` stays for genuine per-piece measurement, if
+    attribution ever gets that precise.
+    """
+
+    __tablename__ = "campaign_referrals"
+    __table_args__ = (db.UniqueConstraint("creator_id", "campaign_id"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    creator_id = db.Column(db.Integer, db.ForeignKey("creators.id"), nullable=False)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id"), nullable=False)
+
+    referrals = db.Column(db.Integer, default=0, nullable=False)
+    window_from = db.Column(db.Date)
+    window_to = db.Column(db.Date)
+    measured_at = db.Column(db.Date, default=date.today)
+    source = db.Column(db.String(120))   # where the number came from
+
+    creator = db.relationship("Creator", back_populates="campaign_referrals")
+    campaign = db.relationship("Campaign", back_populates="referral_totals")
+
+    @property
+    def window_label(self):
+        if self.window_from and self.window_to:
+            return f"{self.window_from:%b %-d} – {self.window_to:%b %-d, %Y}"
+        return "window not recorded"
 
 
 class ScanRun(db.Model):

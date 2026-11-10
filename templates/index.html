@@ -20,7 +20,9 @@
     <div class="stat">
       <div class="stat-label">Referrals</div>
       <div class="stat-value">{{ totals.referrals | thousands }}</div>
-      <div class="stat-note">{{ referral_window }} days after post</div>
+      <div class="stat-note">
+        {% if totals.referral_note %}{{ totals.referral_note }}{% else %}not measured yet{% endif %}
+      </div>
     </div>
     <div class="stat">
       <div class="stat-label">Engagement</div>
@@ -41,11 +43,11 @@
     <a class="panel campaign-card" href="{{ url_for('campaign_detail', slug=c.slug) }}">
       <span class="badge badge-{{ c.status }}">{{ c.status | replace('_', ' ') | capitalize }}</span>
       <h3 class="campaign-name" style="margin-top: var(--space-12)">{{ c.name }}</h3>
-      <p class="campaign-dates">{{ c.starts_on | shortdate }} – {{ c.ends_on | shortdate }}</p>
+      <p class="campaign-dates">{% if c.starts_on or c.ends_on %}{{ c.starts_on | shortdate }} – {{ c.ends_on | shortdate }}{% else %}Dates not set{% endif %}</p>
       <div class="campaign-metrics">
-        <div><strong>{{ c.delivered_count }}/{{ c.creator_count }}</strong> delivered</div>
-        <div><strong>{{ c.total_referrals | compact }}</strong> referrals</div>
-        <div><strong>{{ c.total_engagement | compact }}</strong> engagement</div>
+        <div><strong>{{ c.contacted_count }}</strong> contacted</div>
+        <div><strong>{{ c.commitment_count }}</strong> {{ c.commitment_label | lower }}</div>
+        <div><strong>{{ c.delivered_count }}</strong> delivered</div>
       </div>
     </a>
     {% endfor %}
@@ -66,7 +68,7 @@
         {% for p in top_pieces %}
         <tr>
           <td>
-            <div class="row-name"><a href="{{ url_for('ugc_detail', piece_id=p.id) }}">{{ p.title }}</a></div>
+            <div class="row-name"><a href="{{ url_for('ugc_detail', piece_id=p.id) }}">{{ p.display_title }}</a></div>
             <div class="row-sub">{{ p.creator.name }} · {{ p.campaign.name }}</div>
           </td>
           <td class="num">{{ p.referrals | thousands }}</td>

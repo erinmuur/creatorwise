@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{{ piece.title }} · creatorwise{% endblock %}
+{% block title %}{{ piece.display_title }} · creatorwise{% endblock %}
 
 {% block body %}
 <div class="page-head">
   <p class="eyebrow">
     <a href="{{ url_for('campaign_detail', slug=piece.campaign.slug) }}">{{ piece.campaign.name }}</a>
   </p>
-  <h1 class="page-title">{{ piece.title }}</h1>
+  <h1 class="page-title">{{ piece.display_title }}</h1>
   <p class="page-sub">
     <a href="{{ url_for('creator_detail', creator_id=piece.creator.id) }}">{{ piece.creator.name }}</a>
     · Posted {{ piece.posted_on | shortdate }}
@@ -16,10 +16,12 @@
 
 <div class="split">
   <div>
+    {% if piece.hook %}
     <div class="panel">
       <p class="eyebrow">Hook</p>
       <p class="hook-quote">“{{ piece.hook }}”</p>
     </div>
+    {% endif %}
 
     <div class="panel" style="margin-top: var(--space-16)">
       <div class="stat-row">
@@ -27,7 +29,11 @@
           <div class="stat-label">Referrals</div>
           <div class="stat-value">{{ piece.referrals | thousands }}</div>
           <div class="stat-note">
-            {% if piece.referrals_are_final %}
+            {% if not piece.referral_snapshots %}
+              Not measured yet
+            {% elif not piece.has_window_referrals %}
+              As reported — no measurement window recorded
+            {% elif piece.referrals_are_final %}
               Final, {{ referral_window }}-day window
             {% else %}
               Provisional — window still open
@@ -93,7 +99,7 @@
           <tbody>
             {% for s in snapshots %}
             <tr>
-              <td>{{ s.window_days }} days</td>
+              <td>{{ s.window_label }}</td>
               <td class="num">{{ s.referrals | thousands }}</td>
               <td class="row-sub">{{ s.measured_at | shortdate }}</td>
             </tr>
@@ -129,7 +135,7 @@
     <div class="panel" style="margin-top: var(--space-16)">
       <p class="eyebrow">Provenance</p>
       <dl class="kv">
-        <dt>Found via</dt><dd>{{ piece.discovered_via | capitalize }}</dd>
+        <dt>Found via</dt><dd>{{ piece.discovery_label }}</dd>
         <dt>Campaign</dt>
         <dd><a href="{{ url_for('campaign_detail', slug=piece.campaign.slug) }}">{{ piece.campaign.name }}</a></dd>
       </dl>

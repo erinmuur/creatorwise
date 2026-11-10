@@ -7,6 +7,7 @@ load_dotenv()
 from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 
 from models import (
+    FOLLOW_UP_ORDER,
     PLATFORMS,
     PLATFORM_LABELS,
     REFERRAL_WINDOW_DAYS,
@@ -113,10 +114,21 @@ def index():
     creators = Creator.query.all()
     top_creators = sorted(creators, key=lambda c: c.total_referrals, reverse=True)[:5]
 
+    # Referrals are credited per creator per campaign, not per video, so the
+    # site-wide figure is the sum of the campaigns — summing pieces would
+    # report zero and quietly lose every creator who earned referrals without
+    # posting. Each campaign's own property already prefers its windowed
+    # totals over any leftover per-piece numbers.
+    windows = {c.referral_window for c in campaigns if c.referral_window}
     totals = {
         "creators": len(creators),
         "pieces": len(pieces),
-        "referrals": sum(p.referrals for p in pieces),
+        "referrals": sum(c.total_referrals for c in campaigns),
+        "referral_note": (
+            campaigns[0].referral_window_label
+            if len(windows) == 1
+            else f"across {len(windows)} campaign windows" if windows else None
+        ),
         "engagement": sum(p.engagement for p in pieces),
         "views": sum(p.views for p in pieces),
     }
@@ -155,11 +167,15 @@ def campaign_detail(slug):
 
     pieces = sorted(campaign.ugc, key=SORTS[sort][1], reverse=reverse)
 
-    # Everyone who opted in but hasn't delivered — the follow-up list.
+    # Everyone not yet delivered, grouped by how far they got rather than by
+    # name: on a campaign still being worked, most of this list is people who
+    # haven't been briefed, and they shouldn't be interleaved with the ones
+    # who have.
+    rank = {status: i for i, status in enumerate(FOLLOW_UP_ORDER)}
     outstanding = [
         p for p in campaign.participations if p.status != "content_delivered"
     ]
-    outstanding.sort(key=lambda p: p.creator.name)
+    outstanding.sort(key=lambda p: (rank.get(p.status, len(rank)), p.creator.name))
 
     return render_template(
         "campaign_detail.html",

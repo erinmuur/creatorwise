@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from flask import Flask
 
 import importer
-from models import Campaign, Creator, Participation, SocialHandle, db
+from models import Campaign, Creator, CreatorEmail, Participation, SocialHandle, db
 
 
 def make_app():
@@ -527,6 +527,34 @@ class ApplyTests(unittest.TestCase):
         with self.assertRaises(Exception):
             importer.apply(result)
         self.assertEqual(Creator.query.count(), 0)
+
+    def test_every_address_on_a_row_is_kept(self):
+        """A cell holding two addresses is one person, not one address and a
+        warning — the second one is what a later sheet will arrive with."""
+        csv_text = (
+            "Name,Email\n"
+            "Bea Lune,bea@example.com / bea.lune@example.net\n"
+        )
+        result = importer.plan(csv_text)
+        row = result.rows[0]
+        self.assertEqual(row.email, "bea@example.com")
+        self.assertEqual(row.other_emails, ["bea.lune@example.net"])
+
+        importer.apply(result)
+        creator = Creator.query.one()
+        self.assertEqual(creator.email, "bea@example.com")
+        self.assertEqual(creator.all_emails,
+                         ["bea@example.com", "bea.lune@example.net"])
+        self.assertEqual(CreatorEmail.query.count(), 2)
+        self.assertEqual(
+            CreatorEmail.query.filter_by(is_primary=True).one().address,
+            "bea@example.com",
+        )
+
+    def test_a_plain_row_records_just_the_one_address(self):
+        importer.apply(importer.plan("Name,Email\nBea,bea@example.com\n"))
+        self.assertEqual(CreatorEmail.query.count(), 1)
+        self.assertEqual(Creator.query.one().other_emails, [])
 
     def test_render_reports_blocked_rows_and_warnings(self):
         csv_text = (

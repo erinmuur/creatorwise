@@ -6,7 +6,7 @@
   <p class="eyebrow"><a href="{{ url_for('campaigns') }}">Campaigns</a></p>
   <h1 class="page-title">{{ campaign.name }}</h1>
   <p class="page-sub">
-    {{ campaign.starts_on | shortdate }} – {{ campaign.ends_on | shortdate }}
+    {% if campaign.starts_on or campaign.ends_on %}{{ campaign.starts_on | shortdate }} – {{ campaign.ends_on | shortdate }}{% else %}Dates not set{% endif %}
     · <span class="badge badge-{{ campaign.status }}">{{ campaign.status | capitalize }}</span>
   </p>
 </div>
@@ -14,13 +14,31 @@
 <div class="panel">
   <div class="stat-row">
     <div class="stat">
-      <div class="stat-label">Opted in</div>
-      <div class="stat-value">{{ campaign.creator_count }}</div>
+      <div class="stat-label">Contacted</div>
+      <div class="stat-value">{{ campaign.contacted_count }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">{{ campaign.commitment_label }}</div>
+      <div class="stat-value">{{ campaign.commitment_count }}</div>
+      <div class="stat-note">
+        {% if campaign.records_briefing %}
+          of {{ campaign.opted_in_count }} who opted in
+        {% elif campaign.contacted_count %}
+          {{ (100 * campaign.opted_in_count / campaign.contacted_count) | round | int }}% of contacted · briefing not tracked
+        {% endif %}
+      </div>
     </div>
     <div class="stat">
       <div class="stat-label">Delivered</div>
       <div class="stat-value">{{ campaign.delivered_count }}</div>
-      <div class="stat-note">{{ campaign.delivery_rate }}% follow-through</div>
+      <div class="stat-note">
+        {% if campaign.commitment_count %}
+          {{ campaign.delivery_rate }}% of {{ campaign.commitment_count }}
+          {{ campaign.commitment_label | lower }}
+        {% else %}
+          nobody committed yet
+        {% endif %}
+      </div>
     </div>
     <div class="stat">
       <div class="stat-label">Videos</div>
@@ -29,13 +47,28 @@
     <div class="stat">
       <div class="stat-label">Referrals</div>
       <div class="stat-value">{{ campaign.total_referrals | thousands }}</div>
-      <div class="stat-note">{{ referral_window }} days after post</div>
+      <div class="stat-note">
+        {% if campaign.referral_window_label %}
+          {{ campaign.referral_window_label }} · {{ campaign.credited_count }} creators
+        {% elif campaign.referrals_are_reported %}
+          as reported — no measurement window
+        {% else %}
+          {{ referral_window }} days after post
+        {% endif %}
+      </div>
     </div>
     <div class="stat">
       <div class="stat-label">Engagement</div>
       <div class="stat-value">{{ campaign.total_engagement | compact }}</div>
     </div>
   </div>
+  {% if campaign.status_counts | length > 1 %}
+  <div class="funnel">
+    {% for status, label, count in campaign.status_counts %}
+    <span class="funnel-step"><b>{{ count }}</b> <span>{{ label }}</span></span>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% if campaign.payment_terms %}
   <p class="row-sub" style="margin: var(--space-20) 0 0">Terms: {{ campaign.payment_terms }}</p>
   {% endif %}
@@ -59,16 +92,16 @@
     {% for p in pieces %}
     <a class="ugc-card" href="{{ url_for('ugc_detail', piece_id=p.id) }}">
       <div class="ugc-thumb">
-        <span class="ugc-thumb-hook">{{ p.hook }}</span>
+        <span class="ugc-thumb-hook">{{ p.hook or "" }}</span>
       </div>
-      <h3 class="ugc-title">{{ p.title }}</h3>
+      <h3 class="ugc-title">{{ p.display_title }}</h3>
       <p class="ugc-creator">{{ p.creator.name }} · {{ p.posted_on | shortdate }}</p>
       <div class="ugc-stats">
         <span><b>{{ p.referrals | thousands }}</b> ref</span>
         <span><b>{{ p.likes | compact }}</b> likes</span>
         <span><b>{{ p.comments | compact }}</b> com</span>
       </div>
-      {% if not p.referrals_are_final %}
+      {% if p.posted_on and not p.referrals_are_final %}
       <p style="margin: var(--space-8) 0 0"><span class="badge badge-provisional">Window still open</span></p>
       {% endif %}
     </a>
@@ -80,14 +113,14 @@
 
 {% if outstanding %}
 <div class="section">
-  <h2 class="section-title">Waiting on content ({{ outstanding | length }})</h2>
+  <h2 class="section-title">Rest of the pipeline ({{ outstanding | length }})</h2>
   <div class="panel panel-flush">
     <table>
       <thead>
         <tr>
           <th>Creator</th>
           <th>Status</th>
-          <th>Opted in</th>
+          <th class="num">Referrals</th>
         </tr>
       </thead>
       <tbody>
@@ -98,7 +131,7 @@
             <div class="row-sub">{{ p.creator.email }}</div>
           </td>
           <td><span class="badge badge-{{ p.status }}">{{ p.status_label }}</span></td>
-          <td class="row-sub">{{ p.opted_in_on | shortdate }}</td>
+          <td class="num">{{ p.referrals if p.referrals is not none else "—" }}</td>
         </tr>
         {% endfor %}
       </tbody>

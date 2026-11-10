@@ -243,6 +243,18 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .row-name { font-weight: 600; }
 .row-sub { font-size: 12px; color: var(--text-secondary); }
 
+/* ---------- funnel ---------- */
+
+.funnel { display: flex; flex-wrap: wrap; gap: var(--space-8); margin-top: var(--space-20); }
+.funnel-step {
+  display: flex; align-items: baseline; gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-badge);
+  background: var(--surface-tertiary);
+}
+.funnel-step b { font-size: 1.05rem; }
+.funnel-step span { color: var(--text-secondary); font-size: 0.85rem; }
+
 /* ---------- badges ---------- */
 
 .badge {
@@ -252,9 +264,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   font-size: 11px; font-weight: 600; line-height: 13px;
   white-space: nowrap;
 }
-.badge-delivered { background: var(--feedback-success-bg); color: var(--feedback-success); }
-.badge-opted_in  { background: var(--feedback-info-bg);    color: var(--feedback-info); }
-.badge-no_show   { background: var(--surface-tertiary);    color: var(--text-secondary); }
+/* Participation statuses, in funnel order. The template renders
+   badge-{{ status }}, so these names match PARTICIPATION_STATUSES exactly. */
+.badge-not_contacted     { background: var(--surface-tertiary);    color: var(--text-tertiary); }
+.badge-contacted         { background: var(--surface-tertiary);    color: var(--text-tertiary); }
+.badge-opted_in          { background: var(--feedback-info-bg);    color: var(--feedback-info); }
+.badge-wave_2            { background: var(--feedback-warning-bg); color: var(--feedback-warning); }
+.badge-briefed           { background: var(--feedback-warning-bg); color: var(--feedback-warning); }
+.badge-content_delivered { background: var(--feedback-success-bg); color: var(--feedback-success); }
+.badge-declined          { background: var(--feedback-error-bg);   color: var(--feedback-error); }
+.badge-no_show           { background: var(--surface-tertiary);    color: var(--text-secondary); }
 .badge-active    { background: var(--feedback-warning-bg); color: var(--feedback-warning); }
 .badge-complete  { background: var(--surface-tertiary);    color: var(--text-secondary); }
 .badge-planned   { background: var(--feedback-info-bg);    color: var(--feedback-info); }

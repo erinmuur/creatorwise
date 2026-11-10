@@ -133,7 +133,7 @@
           <td><span class="badge badge-{{ 'delivered' if item.status == 'accepted' else 'no_show' }}">{{ item.status | capitalize }}</span></td>
           <td>
             {% if item.created_piece %}
-            <a href="{{ url_for('ugc_detail', piece_id=item.created_piece.id) }}">{{ item.created_piece.title }}</a>
+            <a href="{{ url_for('ugc_detail', piece_id=item.created_piece.id) }}">{{ item.created_piece.display_title }}</a>
             {% else %}—{% endif %}
           </td>
         </tr>

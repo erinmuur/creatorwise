@@ -38,9 +38,35 @@ Matches columns on aliases rather than an exact header row, so most exports go
 in unchanged. Dry run by default; re-running is safe and never erases data.
 Full guide: **[docs/importing.md](docs/importing.md)**.
 
+## Importing a campaign's content
+
+```bash
+./venv/bin/python content_importer.py ~/Downloads/crm-export.csv --campaign spring-pilot
+```
+
+The second pass: who took part in a campaign, how far each of them got, and
+what they posted. Ties each row to a creator already in the database (it never
+creates one), tracks the whole funnel from `contacted` to `content_delivered`,
+reads TikTok post dates out of the URL, and holds anything it can't resolve
+for review rather than guessing. Full guide:
+**[docs/importing-content.md](docs/importing-content.md)**.
+
 Everything in the dashboard today is sample data — clear it before a real
 import with `./venv/bin/python tools/reset_data.py` (counts only without
 `--yes`).
+
+## Referrals
+
+Referral counts are per creator per campaign, over a stated window — a creator
+with no posted content can still have earned some. They come from the Readwise
+production database (invite-code redemptions), which creatorwise deliberately
+cannot reach, so they arrive as a JSON file of `{email: count}`:
+
+```bash
+./venv/bin/python tools/refresh_referrals.py --campaign bookwise-softlaunch --from 2026-07-15 --to 2026-10-01 --counts counts.json
+```
+
+Dry run by default. The SQL that produces the file is in the tool's docstring.
 
 ## The mail scanner
 

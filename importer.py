@@ -35,6 +35,7 @@ from models import (
     RECRUITMENT_SOURCES,
     Campaign,
     Creator,
+    CreatorEmail,
     Participation,
     SocialHandle,
     db,
@@ -69,7 +70,7 @@ ALIASES = {
     ],
     "onboarded_on": [
         "onboarded", "onboarded date", "onboarded on", "onboarding date",
-        "date onboarded", "joined on",
+        "date onboarded", "joined on", "date joined", "joined",
     ],
     "links": [
         "other urls", "other links", "links", "other social", "website",
@@ -166,8 +167,9 @@ def parse_emails(value):
     """All addresses in a cell, lowercased, in order, de-duplicated.
 
     Sheets routinely hold "a@x.com / b@y.com" or "a@x.com (personal)". The
-    first is treated as primary; the rest are reported, because Creator.email
-    is unique and a second address needs a human decision, not a guess.
+    first is treated as primary and the rest are recorded against the same
+    creator in creator_emails, so a later sheet that uses one of them finds
+    the person who already exists instead of creating a second copy of them.
     """
     out, seen = [], set()
     for match in EMAIL_RE.findall(clean(value)):
@@ -297,7 +299,9 @@ STATUS_SYNONYMS = {
     "complete": "content_delivered", "completed": "content_delivered",
     "posted": "content_delivered", "done": "content_delivered",
     "no show": "no_show", "no_show": "no_show", "ghosted": "no_show",
-    "dropped": "no_show", "declined": "no_show", "no": "no_show",
+    "dropped": "no_show", "no": "no_show",
+    "declined": "declined", "not interested": "declined",
+    "contacted": "contacted", "not contacted": "not_contacted",
     "didn t deliver": "no_show", "never posted": "no_show",
 }
 
@@ -321,13 +325,17 @@ def parse_status(value):
 
 # --- reading the file ---------------------------------------------------------
 
-def read_rows(text):
+def read_rows(text, header_map=None):
     """Parse CSV text into (line_number, {our_field: value}) plus header info.
 
     Returns (rows, mapped, unmapped, duplicate_headers). Unrecognized columns
     are reported rather than dropped silently — an export with a "Payment
     Details" column we don't know about should be visible, not invisible.
+
+    `header_map` defaults to this module's creator columns. content_importer
+    passes its own, so both importers read files the same forgiving way.
     """
+    header_map = _HEADER_MAP if header_map is None else header_map
     reader = csv.reader(io.StringIO(text))
     try:
         header = next(reader)
@@ -338,7 +346,7 @@ def read_rows(text):
     columns = []  # index -> our field name or None
     for raw in header:
         norm = normalize_header(raw)
-        field_name = _HEADER_MAP.get(norm)
+        field_name = header_map.get(norm)
         if field_name is None:
             columns.append(None)
             if norm:
@@ -462,6 +470,7 @@ class RowPlan:
     action: str                      # create | update | unchanged | blocked
     name: str = ""
     email: str = ""
+    other_emails: list = field(default_factory=list)   # same person, more addresses
     reason: str = ""                 # why it's blocked
     fields: dict = field(default_factory=dict)
     handles: list = field(default_factory=list)
@@ -603,10 +612,15 @@ def plan(text, campaign_slug=None):
             continue
 
         email = emails[0]
-        if len(emails) > 1:
+        other_emails = emails[1:]
+        if other_emails:
+            # Recorded against the same creator rather than dropped. The first
+            # one stays the primary, because something has to be, and that is
+            # what the rest of the app keys on.
             warnings.append(
-                "extra addresses in this cell, not imported: "
-                + ", ".join(emails[1:])
+                "more than one address on this row; "
+                f"{email} is the primary, also recording "
+                + ", ".join(other_emails)
             )
 
         if email in seen_in_file:
@@ -684,6 +698,7 @@ def plan(text, campaign_slug=None):
 
         row = RowPlan(
             line=line, action="create", name=name, email=email,
+            other_emails=other_emails,
             fields=fields, handles=handles, status=status or "opted_in",
             opted_in_on=opted, warnings=warnings, recruiter_raw=recruiter_raw,
         )
@@ -731,6 +746,41 @@ def plan(text, campaign_slug=None):
 
 # --- applying it --------------------------------------------------------------
 
+def record_email(creator, address, is_primary=False, source=None,
+                 allow_shared=False):
+    """Attach an address to a creator.
+
+    Returns the CreatorEmail row, or None when somebody else already holds the
+    address and `allow_shared` is False — that is usually a conflict for a
+    human to settle, not something to reassign silently. Genuinely shared
+    mailboxes (a duo on one channel) are real, so `allow_shared` exists, but
+    it is never the default: a sheet with one address on two names is far more
+    often an error than a duo.
+    """
+    address = (address or "").strip().lower()
+    if not address:
+        return None
+    mine = CreatorEmail.query.filter_by(
+        address=address, creator_id=creator.id
+    ).first()
+    if mine is not None:
+        if is_primary and not mine.is_primary:
+            mine.is_primary = True
+        return mine
+    held_by_other = CreatorEmail.query.filter(
+        CreatorEmail.address == address,
+        CreatorEmail.creator_id != creator.id,
+    ).first()
+    if held_by_other is not None and not allow_shared:
+        return None
+    row = CreatorEmail(
+        creator_id=creator.id, address=address,
+        is_primary=is_primary, source=source,
+    )
+    db.session.add(row)
+    return row
+
+
 def apply(plan_result):
     """Commit a plan. Returns a summary dict.
 
@@ -765,7 +815,12 @@ def apply(plan_result):
                 if value:
                     setattr(creator, key, value)
 
-            db.session.flush()  # need creator.id for handles
+            db.session.flush()  # need creator.id for handles and addresses
+
+            # Every address we saw on this row, the primary included, so
+            # creator_emails holds the whole picture rather than only extras.
+            for index, address in enumerate([row.email] + row.other_emails):
+                record_email(creator, address, is_primary=(index == 0))
 
             for handle in row.handles:
                 current = next(

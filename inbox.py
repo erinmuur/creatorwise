@@ -27,6 +27,7 @@ from datetime import date
 from models import (
     Campaign,
     Creator,
+    CreatorEmail,
     InboxItem,
     PlatformPost,
     SocialHandle,
@@ -133,6 +134,15 @@ def match_creator(sender_email, body=None):
         creator = Creator.query.filter(db.func.lower(Creator.email) == addr).first()
         if creator:
             return creator, "sender email"
+
+        # Their second address. Several creators mail from one account and
+        # were recruited under another, so matching the primary alone drops
+        # real submissions on the floor.
+        secondary = CreatorEmail.query.filter(
+            db.func.lower(CreatorEmail.address) == addr
+        ).first()
+        if secondary is not None and secondary.creator is not None:
+            return secondary.creator, "sender email (second address)"
 
     if body:
         handles = re.findall(r"@[A-Za-z0-9._]{3,30}", body)

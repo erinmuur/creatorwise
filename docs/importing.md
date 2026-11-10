@@ -141,12 +141,34 @@ A creator named as their own referrer is refused — that would loop the graph.
 Instagram and a TikTok handle on the row — it warns and leaves both empty
 rather than picking one. Inventing a number is worse than missing one.
 
-**Merge a creator's second email address.** `Creator.email` is unique and
-single. A cell holding `bookshelfbea@example.com / bea.k@example.net`
-imports the first and warns about the second. If people in your list genuinely
-have two addresses — and from the inbox scan, at least one does — that needs a
-small schema change (a `creator_emails` table) rather than a guess. Worth doing
-if it's common in your data; tell me how often it comes up.
+**Pick which of two addresses is the real one.** A cell holding
+`bookshelfbea@example.com / bea.k@example.net` keeps both: the first becomes
+the primary (something has to be, and it's what the app keys on) and the rest
+are recorded against the same creator in `creator_emails`. A later sheet that
+arrives with the second address finds the person who already exists instead of
+creating a second copy of them, and the mail scanner recognises submissions
+from either one.
+
+An address already held by a *different* creator is never moved. That's a
+conflict for you to settle, not something to reassign quietly.
+
+## More than one address
+
+Run this once against an existing database, to mirror every creator's primary
+address into `creator_emails`:
+
+```bash
+./venv/bin/python tools/backfill_emails.py --yes
+```
+
+It only ever adds rows, so running it again is harmless. New imports keep the
+table up to date on their own.
+
+## Importing what they posted
+
+This file is about loading creators. Loading a *campaign's* participants and
+content — who took part, what they posted, when — is a separate pass with its
+own matching rules: **[importing-content.md](importing-content.md)**.
 
 ## If the import fails partway
 

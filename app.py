@@ -4,7 +4,10 @@ from datetime import date
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Flask, abort, g, jsonify, redirect, render_template, request, send_file,
+    url_for,
+)
 
 from models import (
     FOLLOW_UP_ORDER,
@@ -20,6 +23,7 @@ from models import (
 )
 import inbox as inbox_lib
 import auth
+import avatars
 import gmail
 import scan as scan_lib
 
@@ -100,7 +104,34 @@ def inject_globals():
         "referral_window": REFERRAL_WINDOW_DAYS,
         "today": date.today(),
         "inbox_pending": InboxItem.query.filter_by(status="pending").count(),
+        "avatar_ids": _avatar_ids(),
     }
+
+
+def _avatar_folder():
+    # AVATAR_DIR exists so tests can point at a scratch folder: with an
+    # in-memory database there is no data directory to sit beside, and the
+    # fallback would be the real one.
+    return app.config.get("AVATAR_DIR") or avatars.directory(
+        app.config["SQLALCHEMY_DATABASE_URI"]
+    )
+
+
+def _avatar_ids():
+    """Who has a photo — one directory listing per request, not one per row."""
+    if "avatar_ids" not in g:
+        g.avatar_ids = avatars.ids(_avatar_folder())
+    return g.avatar_ids
+
+
+@app.route("/creators/<int:creator_id>/avatar")
+def creator_avatar(creator_id):
+    """A creator's profile photo. Behind the session gate like everything else:
+    these are real people's faces and the dashboard is not public."""
+    path = avatars.find(_avatar_folder(), creator_id)
+    if path is None:
+        abort(404)
+    return send_file(path, max_age=3600)
 
 
 # --- routes -------------------------------------------------------------------
@@ -206,7 +237,9 @@ def creators():
 @app.route("/creators/<int:creator_id>")
 def creator_detail(creator_id):
     creator = db.session.get(Creator, creator_id) or abort(404)
-    pieces = sorted(creator.ugc, key=lambda p: (p.posted_on or date.min), reverse=True)
+    pieces = sorted(
+        creator.all_pieces, key=lambda p: (p.posted_on or date.min), reverse=True
+    )
     participations = sorted(
         creator.participations,
         key=lambda p: (p.campaign.starts_on or date.min),

@@ -81,5 +81,71 @@ class SessionGateTests(unittest.TestCase):
         self.assertEqual(self.client.get("/inbox").status_code, 302)
 
 
+class AvatarTests(unittest.TestCase):
+    """Photos are real people's faces: gated like every other page, and drawn
+    only for the creators who actually have one."""
+
+    JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+
+    def setUp(self):
+        import tempfile
+
+        import avatars
+        from models import Creator, db
+
+        self.tmp = tempfile.TemporaryDirectory()
+        appmod.app.config["AVATAR_DIR"] = self.tmp.name
+        self.client = appmod.app.test_client()
+        with appmod.app.app_context():
+            db.session.query(Creator).delete()
+            with_photo = Creator(name="Bea Lune", email="bea@example.com")
+            without = Creator(name="Pax Quill", email="pax@example.com")
+            db.session.add_all([with_photo, without])
+            db.session.commit()
+            self.with_photo, self.without = with_photo.id, without.id
+        avatars.save(self.tmp.name, self.with_photo, self.JPEG)
+
+    def tearDown(self):
+        appmod.app.config.pop("AVATAR_DIR", None)
+        self.tmp.cleanup()
+
+    def login(self):
+        self.client.post("/login", data={"password": "test-password"})
+
+    def test_a_photo_needs_a_session(self):
+        r = self.client.get(f"/creators/{self.with_photo}/avatar")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login", r.headers["Location"])
+
+    def test_a_photo_is_served_to_a_signed_in_user(self):
+        self.login()
+        r = self.client.get(f"/creators/{self.with_photo}/avatar")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.mimetype, "image/jpeg")
+        self.assertEqual(r.data, self.JPEG)
+        r.close()
+
+    def test_no_photo_is_a_404_not_a_broken_image(self):
+        self.login()
+        self.assertEqual(
+            self.client.get(f"/creators/{self.without}/avatar").status_code, 404
+        )
+
+    def test_the_list_draws_a_photo_or_initials_never_a_dead_link(self):
+        """Also guards the macro import: without `with context` it cannot see
+        who has a photo and silently renders initials for everybody."""
+        self.login()
+        html = self.client.get("/creators").get_data(as_text=True)
+        self.assertIn(f'/creators/{self.with_photo}/avatar"', html)
+        self.assertNotIn(f'/creators/{self.without}/avatar"', html)
+        self.assertIn(">PQ</span>", html)
+
+    def test_the_profile_page_shows_it_too(self):
+        self.login()
+        html = self.client.get(f"/creators/{self.with_photo}").get_data(as_text=True)
+        self.assertIn(f'/creators/{self.with_photo}/avatar"', html)
+        self.assertIn("avatar-lg", html)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -25,6 +25,8 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `models.py` | SQLAlchemy models (`db` lives here) |
 | `tools/backfill_emails.py` | one-off: mirror primaries into `creator_emails` |
 | `tools/refresh_referrals.py` | load per-creator referral counts for a campaign |
+| `avatars.py` | profile photos on disk under `data/avatars/` |
+| `tools/fetch_avatars.py` | download profile photos from Readwise Books profiles |
 | `templates/` | Jinja templates |
 | `static/` | CSS and assets |
 | `data/` | SQLite DB — gitignored, persistent in production |
@@ -162,8 +164,8 @@ date fits. Don't "fix" the range by dropping it. The other 257 creators have no 
 recruitment export has no campaign column and its onboarding dates span Jul
 2025 to Jul 2026, so assigning them would be fabrication.
 
-Bookwise Softlaunch, from the opt-ins sheet on 2026-11-09: 153 participants —
-8 contacted, 69 opted in, 22 wave 2, 11 briefed, 41 delivered, 2 declined —
+Bookwise Softlaunch, from the opt-ins sheet on 2026-11-09: 154 participants —
+8 contacted, 69 opted in, 22 wave 2, 11 briefed, 42 delivered, 2 declined —
 with 49 pieces from 76 links (26 of them cross-posted). Referrals are the
 live figures, not the sheet's: 577 across 50 creators, counted over
 Jul 15 – Oct 1 2026 from invite-code redemptions.
@@ -213,16 +215,25 @@ near-miss that gives this away, so don't suppress warnings on held rows.
 One address on two names has turned out to mean both things, so neither is
 the default reading:
 
-- **Two people, one mailbox.** A duo who run one channel (confirmed
-  2026-11-09): creator 77 holds the channel's handles and its softlaunch
-  content, creator 78 has his own address plus the shared one. Their two
-  announcement rows are reported as ambiguous on every import, which is
-  correct — the sheet cannot say which of them a row is about, and the
-  records are already right. Don't "fix" those two review lines.
-- **One person, two spellings.** The two rows for one creator under
-  one shared address: the importer has only ever created one record for him, so
-  there was never a duplicate to merge; the second row is held because the
-  first already claimed him.
+- **Two people, one mailbox, one channel.** A duo who run a single channel
+  (creators 77 and 78; set up as Erin specified on 2026-11-10). Each has his
+  own name and his own primary address; both carry the shared mailbox as a
+  secondary and both carry the channel's TikTok and Instagram handles and its
+  profile photo. There is no separate joint profile — record 77 used to be
+  one and is now one of the two people. The channel's softlaunch piece has 77
+  as its lead and 78 as a collaborator, and both are `content_delivered`.
+  Consequences that are correct and should be left alone: their shared
+  address and their shared handles both match two creators, so any sheet row
+  that identifies them only by those is reported as ambiguous or conflicting
+  rather than assigned, and `refresh_referrals` credits neither for the
+  shared address.
+- **One person, two spellings.** Two announcement rows for one creator: the
+  importer has only ever created one record for him, so there was never a
+  duplicate to merge; the second row is held because the first already
+  claimed him.
+
+No real names, handles, channel names or address fragments in this file —
+it is committed to a public repo. Refer to creators by id.
 
 The creator who appears in the recruitment export and the opt-ins sheet under
 different addresses now holds both, via `creator_emails`. Importing "creators
@@ -301,6 +312,16 @@ UgcPiece/PlatformPost rows for one campaign. Same `plan()` / `apply()` shape as
   count on a row with no content has nowhere to land. Both are now asserted in
   the tests; add the same assertion to anything new that gets counted.
 
+## Shared credit on a piece
+
+`UgcPiece.creator_id` is the lead; `PieceCollaborator` adds anyone else who
+made it. Use `piece.creators` / `piece.byline` for display and
+`creator.all_pieces` for "what did this person make" — `creator.ugc` is only
+the pieces they lead. **Never duplicate a piece to credit a second person**:
+campaign totals sum `campaign.ugc`, so a copy double-counts the video and,
+later, its views and likes. The softlaunch has one such piece, which is why it
+reads 154 participants and 42 delivered on 49 videos.
+
 ## Referrals
 
 **Referrals belong to a creator in a campaign, not to a video.** The source
@@ -331,6 +352,45 @@ established that the sheet was campaign-windowed and that this window is the
 right one. The sheet missed 13 creators who had earned referrals (58 in all,
 one of them 25 with no content at all), and was ~6 weeks stale — its totals
 matched the live cumulative figure around late September.
+
+## Profile photos
+
+One file per creator at `data/avatars/<creator id>.<ext>` — no column, no
+table. Whether a creator has a photo is whether the file exists, so this needed
+no migration. They sit under `data/` because it is gitignored (**a creator's
+face must never be committed to this public repo**) and because it is the
+persistent volume. Served by `/creators/<id>/avatar`, behind the session gate.
+
+- **The source is the creator's own Readwise Books profile, not their social
+  accounts.** `bookwise_bookwiseprofile.profile_image_thumbnail` is a storage
+  key under the public `readwise-assets` bucket at `media/<key>`. It is the
+  picture they chose for this product, at a stable URL, with no login.
+  `tools/fetch_avatars.py` takes `{email: key}` — same hand-off pattern as the
+  referral tool, because creatorwise has no production access.
+- Use the **thumbnail** key. The full-size `profile_image` originals came to
+  106 MB for 262 creators; the thumbnails are 3.8 MB.
+- Social profiles are the fallback for creators with no Books photo, and only
+  that: Instagram and TikTok image URLs are signed and expire within days, so
+  they must be downloaded, never hot-linked. YouTube gives `og:image` to a
+  plain request; Instagram and TikTok only render in a real browser.
+- Files are validated by their leading bytes, not by extension or
+  Content-Type — a CDN can answer a missing object with a 200 and an HTML page.
+- `{% from "_avatar.html" import avatar with context %}` — **the `with context`
+  is load-bearing.** Without it the macro can't see `avatar_ids` and silently
+  renders initials for everybody. There is a test for exactly this.
+- This venv's Python has no CA bundle configured; the fetch tool loads the
+  system one. The fix for a failed certificate check is to find the bundle,
+  never to turn verification off.
+
+Loaded 2026-11-10: 297 of 302 — 262 from Books profiles, 9 YouTube, 14 TikTok,
+12 Instagram. The five without have no working social handle on file.
+
+**"Couldn't find this account" on TikTok is not proof a handle is dead.** That
+is what a logged-out visitor sees, and at least one creator's own link page
+points at a TikTok handle that shows exactly that message. Treat it as "not
+visible without a login", report it, and don't delete the handle on that
+evidence alone. A handle is confirmed stale only when the creator has visibly
+moved — a renamed account, or Erin saying so.
 
 ## The mail scanner
 

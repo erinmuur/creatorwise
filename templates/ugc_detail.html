@@ -8,7 +8,9 @@
   </p>
   <h1 class="page-title">{{ piece.display_title }}</h1>
   <p class="page-sub">
-    <a href="{{ url_for('creator_detail', creator_id=piece.creator.id) }}">{{ piece.creator.name }}</a>
+    {% for c in piece.creators -%}
+    <a href="{{ url_for('creator_detail', creator_id=c.id) }}">{{ c.name }}</a>{% if not loop.last %} &amp; {% endif %}
+    {%- endfor %}
     · Posted {{ piece.posted_on | shortdate }}
     {% if piece.is_cross_posted %}· {{ piece.posts | length }} platforms{% endif %}
   </p>

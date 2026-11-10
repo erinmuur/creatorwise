@@ -1,16 +1,22 @@
 {% extends "base.html" %}
+{% from "_avatar.html" import avatar with context %}
 {% block title %}{{ creator.name }} · creatorwise{% endblock %}
 
 {% block body %}
 <div class="page-head">
   <p class="eyebrow"><a href="{{ url_for('creators') }}">Creators</a></p>
-  <h1 class="page-title">{{ creator.name }}</h1>
-  <p class="page-sub">
-    {{ creator.email }}
-    {%- for address in creator.other_emails %}
-    · <span title="also mails from this address">{{ address }}</span>
-    {%- endfor %}
-  </p>
+  <div class="who-head">
+    {{ avatar(creator, "lg") }}
+    <div>
+      <h1 class="page-title">{{ creator.name }}</h1>
+      <p class="page-sub">
+        {{ creator.email }}
+        {%- for address in creator.other_emails %}
+        · <span title="also mails from this address">{{ address }}</span>
+        {%- endfor %}
+      </p>
+    </div>
+  </div>
 </div>
 
 <div class="split">
@@ -27,7 +33,7 @@
         </div>
         <div class="stat">
           <div class="stat-label">Videos</div>
-          <div class="stat-value">{{ creator.ugc | length }}</div>
+          <div class="stat-value">{{ creator.all_pieces | length }}</div>
         </div>
         <div class="stat">
           <div class="stat-label">Followers</div>

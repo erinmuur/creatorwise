@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_avatar.html" import avatar with context %}
 {% block title %}Overview · creatorwise{% endblock %}
 
 {% block body %}
@@ -69,7 +70,7 @@
         <tr>
           <td>
             <div class="row-name"><a href="{{ url_for('ugc_detail', piece_id=p.id) }}">{{ p.display_title }}</a></div>
-            <div class="row-sub">{{ p.creator.name }} · {{ p.campaign.name }}</div>
+            <div class="row-sub">{{ p.byline }} · {{ p.campaign.name }}</div>
           </td>
           <td class="num">{{ p.referrals | thousands }}</td>
           <td class="num">{{ p.engagement | compact }}</td>
@@ -93,8 +94,13 @@
         {% for c in top_creators %}
         <tr>
           <td>
-            <div class="row-name"><a href="{{ url_for('creator_detail', creator_id=c.id) }}">{{ c.name }}</a></div>
-            <div class="row-sub">{{ c.delivered_count }} delivered · {{ c.follower_count | compact }} followers</div>
+            <div class="who">
+              {{ avatar(c) }}
+              <div>
+                <div class="row-name"><a href="{{ url_for('creator_detail', creator_id=c.id) }}">{{ c.name }}</a></div>
+                <div class="row-sub">{{ c.delivered_count }} delivered · {{ c.follower_count | compact }} followers</div>
+              </div>
+            </div>
           </td>
           <td class="num">{{ c.total_referrals | thousands }}</td>
         </tr>

@@ -170,6 +170,10 @@ class Creator(db.Model):
         "CampaignReferral", back_populates="creator",
         cascade="all, delete-orphan", lazy="selectin",
     )
+    collaborations = db.relationship(
+        "PieceCollaborator", back_populates="creator",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
 
     # The recruitment graph. `recruited_by` is the creator who referred this one;
     # `recruits` is everyone they brought in. remote_side points at the parent
@@ -182,6 +186,16 @@ class Creator(db.Model):
     recruits = db.relationship(
         "Creator", back_populates="recruited_by", lazy="selectin",
     )
+
+    @property
+    def initials(self):
+        """Up to two letters to stand in where there is no profile photo."""
+        words = [w for w in (self.name or "").replace("(", " ").split() if w[:1].isalnum()]
+        if not words:
+            return "?"
+        if len(words) == 1:
+            return words[0][:1].upper()
+        return (words[0][:1] + words[1][:1]).upper()
 
     @property
     def recruit_count(self):
@@ -241,8 +255,18 @@ class Creator(db.Model):
         return sum(p.referrals for p in self.ugc)
 
     @property
+    def all_pieces(self):
+        """Everything this creator made — as lead or alongside somebody else."""
+        seen, out = set(), []
+        for piece in list(self.ugc) + [c.piece for c in self.collaborations]:
+            if piece.id not in seen:
+                seen.add(piece.id)
+                out.append(piece)
+        return out
+
+    @property
     def total_engagement(self):
-        return sum(p.engagement for p in self.ugc)
+        return sum(p.engagement for p in self.all_pieces)
 
     @property
     def follower_count(self):
@@ -519,7 +543,9 @@ class Participation(db.Model):
     @property
     def pieces(self):
         """This creator's UGC for this campaign."""
-        return [p for p in self.creator.ugc if p.campaign_id == self.campaign_id]
+        return [
+            p for p in self.creator.all_pieces if p.campaign_id == self.campaign_id
+        ]
 
     @property
     def referrals(self):
@@ -559,6 +585,23 @@ class UgcPiece(db.Model):
         "ReferralSnapshot", back_populates="piece",
         cascade="all, delete-orphan", lazy="selectin",
     )
+    collaborations = db.relationship(
+        "PieceCollaborator", back_populates="piece",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
+
+    @property
+    def creators(self):
+        """Everyone on this piece, lead first."""
+        out = [self.creator]
+        for row in self.collaborations:
+            if row.creator is not None and row.creator not in out:
+                out.append(row.creator)
+        return out
+
+    @property
+    def byline(self):
+        return " & ".join(c.name for c in self.creators)
 
     @property
     def discovery_label(self):
@@ -648,6 +691,28 @@ class UgcPiece(db.Model):
 
     def __repr__(self):
         return f"<UgcPiece {self.id} {self.title!r}>"
+
+
+class PieceCollaborator(db.Model):
+    """A second (or third) creator on one piece of content.
+
+    `UgcPiece.creator_id` stays the piece's lead creator. This is for the rest:
+    two people who run one channel post one video, and both delivered it.
+    Giving each a copy of the piece would count the video — and later its
+    views and likes — twice in the campaign; crediting only one of them
+    reports the other as never having delivered. So the piece exists once and
+    lists everyone on it.
+    """
+
+    __tablename__ = "piece_collaborators"
+    __table_args__ = (db.UniqueConstraint("ugc_piece_id", "creator_id"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    ugc_piece_id = db.Column(db.Integer, db.ForeignKey("ugc_pieces.id"), nullable=False)
+    creator_id = db.Column(db.Integer, db.ForeignKey("creators.id"), nullable=False)
+
+    piece = db.relationship("UgcPiece", back_populates="collaborations")
+    creator = db.relationship("Creator", back_populates="collaborations")
 
 
 class PlatformPost(db.Model):

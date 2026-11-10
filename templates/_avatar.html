@@ -1,0 +1,10 @@
+{#- A creator's photo, or their initials where we have none.
+    `avatar_ids` comes from the context processor: one directory listing per
+    request rather than a file check per row. -#}
+{% macro avatar(creator, size="md") -%}
+{% if creator.id in avatar_ids -%}
+<img class="avatar avatar-{{ size }}" src="{{ url_for('creator_avatar', creator_id=creator.id) }}" alt="" loading="lazy">
+{%- else -%}
+<span class="avatar avatar-{{ size }} avatar-initials" aria-hidden="true">{{ creator.initials }}</span>
+{%- endif %}
+{%- endmacro %}

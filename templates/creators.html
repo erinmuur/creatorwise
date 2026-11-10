@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_avatar.html" import avatar with context %}
 {% block title %}Creators · creatorwise{% endblock %}
 
 {% block body %}
@@ -30,8 +31,13 @@
       {% for c in creators %}
       <tr>
         <td>
-          <div class="row-name"><a href="{{ url_for('creator_detail', creator_id=c.id) }}">{{ c.name }}</a></div>
-          <div class="row-sub">{{ c.email }}</div>
+          <div class="who">
+            {{ avatar(c) }}
+            <div>
+              <div class="row-name"><a href="{{ url_for('creator_detail', creator_id=c.id) }}">{{ c.name }}</a></div>
+              <div class="row-sub">{{ c.email }}</div>
+            </div>
+          </div>
         </td>
         <td>
           {% for h in c.handles %}

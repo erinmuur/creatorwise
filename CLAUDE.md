@@ -271,9 +271,11 @@ UgcPiece/PlatformPost rows for one campaign. Same `plan()` / `apply()` shape as
   (`records_briefing`: at least one explicit `briefed` row) and
   `opted_in_count` otherwise, with `commitment_label` naming which. Opting in
   is cheap — 143 said yes to the softlaunch and 52 were briefed. Without this
-  fallback, `briefed_count` collapses to `delivered_count` on a campaign that
-  never recorded briefing and reports a meaningless 100% follow-through; only
-  the softlaunch tracks it. **`contacted` as a status is the opposite of
+  fallback, `briefed_count` collapses to `delivered_count` on a campaign with
+  no briefing stage and reports a meaningless 100% follow-through. Only the
+  softlaunch has one: **the announcement ran no briefing calls at all**, so
+  its `records_briefing` being False is correct, not a gap in the data. The
+  UI says nothing about why — it just shows opt-ins. **`contacted` as a status is the opposite of
   `contacted` as a metric** — the status means reached out to and never heard
   from, the metric means everybody. `status_counts` is the disjoint view.
 - Referral counts from a sheet are stored with `window_days = REPORTED_WINDOW`

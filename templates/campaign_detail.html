@@ -24,7 +24,7 @@
         {% if campaign.records_briefing %}
           of {{ campaign.opted_in_count }} who opted in
         {% elif campaign.contacted_count %}
-          {{ (100 * campaign.opted_in_count / campaign.contacted_count) | round | int }}% of contacted · briefing not tracked
+          {{ (100 * campaign.opted_in_count / campaign.contacted_count) | round | int }}% of contacted
         {% endif %}
       </div>
     </div>

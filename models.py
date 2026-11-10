@@ -455,12 +455,15 @@ class Campaign(db.Model):
 
     @property
     def records_briefing(self):
-        """Did this campaign's source actually track who was briefed?
+        """Does this campaign have a briefing stage with people in it?
 
-        Without an explicit `briefed` row somewhere, `briefed_count` collapses
-        to `delivered_count` and claims a 100% follow-through that only means
-        "we have no idea who else was briefed". Two of the three campaigns
-        here are in exactly that position.
+        False covers two different situations — a campaign that briefed people
+        without recording it, and one that had no briefing step at all — and
+        the dashboard shouldn't guess which, so it says neither. It just falls
+        back to opt-ins. What matters either way is that `briefed_count`
+        collapses to `delivered_count` here, so it must not be used as a
+        denominator: dividing the deliverers by themselves reports a 100%
+        follow-through that means nothing.
         """
         return any(p.status == "briefed" for p in self.participations)
 

@@ -568,7 +568,14 @@ and only names the piece actually has are served.
   short link), so 123's link was rewritten to the full form — keep it that
   way, or a re-import recreates the duplicate — and 174 deleted; 170's reel
   was the same video as TikTok 172 (126s, same day), so the reel moved to
-  172 and 170 was deleted. Not merged: 088's reel matches saving-off TikTok
+  172 and 170 was deleted. Later that day Erin added three Instagram posts
+  by hand (180–182, `discovered_via="manual"`), which made their creators
+  `content_delivered` — one of them had been `contacted`, overruled on
+  Erin's word that he posted: 110 pieces, 72 delivered, 50 with media. 181
+  came from its identical TikTok; 180 and 182 (reels over music, no TikTok
+  copy) came as files from Erin with her own transcripts of the on-screen
+  text, used as given (`source.json` how: "transcribed by hand", which the
+  piece page shows instead of the machine-transcript note). 52 with media. Not merged: 088's reel matches saving-off TikTok
   089 (119s), but neither has media yet to prove it.
   146 and 148 are 7s clips over a film quote and a song: like lyrics, that
   audio is not a transcript, so they carry their on-screen text instead.

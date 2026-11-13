@@ -30,7 +30,9 @@
       <p class="eyebrow">Transcript</p>
       <div class="transcript">{{ stored.transcript }}</div>
       <p class="row-sub" style="margin: var(--space-12) 0 0">
-        {% if stored.video %}Machine transcript (Whisper, run locally){% else %}Text read off the slides{% endif %} — names and titles may be wrong.
+        {%- set how = ((stored.source or {}).get("transcript") or {}).get("how", "") -%}
+        {% if "by hand" in how %}Transcribed by hand from the video's on-screen text.
+        {%- else %}{% if stored.video %}Machine transcript (Whisper, run locally){% else %}Text read off the slides{% endif %} — names and titles may be wrong.{% endif %}
         <a href="{{ url_for('ugc_media', piece_id=piece.id, name='transcript.txt', download=1) }}">Download .txt</a>
       </p>
     </div>

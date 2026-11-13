@@ -162,7 +162,9 @@ Currently loaded (locally only): 280 creators from the recruitment export,
 501 handles (234 TikTok, 198 Instagram, 48 YouTube, 17 Threads, 4 X), 209
 referral links, and one campaign — Bookwise Stickers Beta, from the CRM export
 on 2026-11-09: 24 participants, 20 delivered, 21 pieces (19 TikTok, 2
-Instagram), 18 of them dated. One of those pieces is dated 2026-02-23, well
+Instagram), 18 of them dated. Now 23, 19 and 20: on 2026-11-13 Erin had
+creator 106 removed from it entirely — piece 005, participation and
+referral row — because she took her video down (creator record kept). One of those pieces is dated 2026-02-23, well
 after the rest of the cohort (2025-10-13 to 2025-12-08) — the CRM lists that
 post against a participant, so it was kept on the CRM's word, not because the
 date fits. Don't "fix" the range by dropping it. The other 257 creators have no campaign: the
@@ -210,7 +212,7 @@ contradiction is reported instead.
 **The Stickers Beta's zero referrals is a measurement, not a gap.** It ran
 Oct 1 2025 – Mar 31 2026 (dates from Erin, 2026-11-10), and counted over that
 window every participant has 0 redemptions — because no participant had an
-invite code yet: the earliest was created 2026-06-05. The 24 zero rows are
+invite code yet: the earliest was created 2026-06-05. The 24 (now 23) zero rows are
 stored with that window. Don't go looking for more.
 
 Campaign dates (from Erin, 2026-11-10): Stickers Beta Oct 1 2025 – Mar 31
@@ -592,7 +594,15 @@ and only names the piece actually has are served.
   saving-off TikToks, the unavailable one, and the TikTok carousel (019).
   The two Instagram posts (011, a photo; 015, 8 slides) were captured from
   screenshots later that day — 15 of 21. Both are reading-stats screens
-  with no phrase to quote, so they keep the platform label.
+  with no phrase to quote, so they keep the platform label. The
+  unavailable one (005) was removed from the campaign on 2026-11-13: 15 of
+  20. The same day Erin supplied the last five — the four saving-off
+  videos (002, 007, 013, 016; 002 as its TikTok file, the reel being the
+  same video) and 019's eight slides — with transcripts: TikTok's own
+  auto-captions for the three with speech (`how`: "TikTok's
+  auto-generated captions", shown as such on the page; 007's "phobia"
+  corrected to the book's title per her note), and her hand transcription
+  of on-screen text for the other two. Stickers Beta is complete, 20 of 20.
 - Stickers Beta cross-posts, 2026-11-12: the CRM listed only TikTok links,
   but six of those videos were also posted as Instagram reels, found by
   reading each creator's grid within a week of the TikTok and confirmed by

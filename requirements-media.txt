@@ -1,0 +1,3 @@
+# Local-only extras for tools/transcribe_media.py. Not installed in production:
+# transcription runs on a laptop, and the deployed app only serves the result.
+faster-whisper==1.2.1

@@ -79,11 +79,19 @@
       <div class="ugc-grid">
         {% for p in pieces %}
         <a class="ugc-card" href="{{ url_for('ugc_detail', piece_id=p.id) }}">
-          <div class="ugc-thumb"><span class="ugc-thumb-hook">{{ p.hook or "" }}</span></div>
+          {% if p.id in media_ids %}
+          <div class="ugc-thumb has-media">
+            <img class="ugc-thumb-img" src="{{ url_for('ugc_media', piece_id=p.id, name=media_thumb(p.id)) }}" alt="" loading="lazy">
+          </div>
+          {% else %}
+          <div class="ugc-thumb">
+            <span class="ugc-thumb-hook">{{ p.hook or "" }}</span>
+          </div>
+          {% endif %}
           <h3 class="ugc-title">{{ p.display_title }}</h3>
-          <p class="ugc-creator">{{ p.campaign.name }} · {{ p.posted_on | shortdate }}</p>
+          <p class="ugc-creator">{{ p.campaign.name }} · {{ p.platform_summary }}{% if p.posted_on %} · {{ p.posted_on | shortdate }}{% endif %}</p>
           <div class="ugc-stats">
-            <span><b>{{ p.referrals | thousands }}</b> ref</span>
+            <span title="{{ p.byline }}'s referrals for the whole campaign, not this video's"><b>{{ (p.creator_referrals | thousands) if p.creator_referrals is not none else "—" }}</b> creator ref</span>
             <span><b>{{ p.likes | compact }}</b> likes</span>
           </div>
         </a>
@@ -102,7 +110,11 @@
         <dt>{{ h.platform_label }}</dt>
         <dd>
           {% if h.profile_url %}<a href="{{ h.profile_url }}">{{ h.handle }}</a>{% else %}{{ h.handle }}{% endif %}
-          {% if h.follower_count %}<div class="row-sub">{{ h.follower_count | compact }} followers</div>{% endif %}
+          {% if h.is_unresolved %}
+          <div class="row-sub">account not found when checked {{ h.followers_checked_on | shortdate }}</div>
+          {% elif h.follower_count is not none %}
+          <div class="row-sub">{{ h.follower_count | thousands }} followers{% if h.followers_checked_on %} · checked {{ h.followers_checked_on | shortdate }}{% endif %}</div>
+          {% endif %}
         </dd>
         {% endfor %}
       </dl>

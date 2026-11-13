@@ -5,13 +5,20 @@
 {% block body %}
 <div class="page-head">
   <h1 class="page-title">Creators</h1>
-  <p class="page-sub">{{ creators | length }} recruited.</p>
+  <p class="page-sub"><span id="creator-count">{{ creators | length }}</span> recruited.</p>
+</div>
+
+<div class="searchbar">
+  <input class="field search-field" id="creator-search" type="search" name="q" value="{{ q }}"
+         placeholder="Search by name, email or handle" autocomplete="off" spellcheck="false"
+         aria-label="Search creators" data-total="{{ creators | length }}">
 </div>
 
 <div class="sortbar">
   <span class="sortbar-label">Sort</span>
   {% for key, label in [('referrals','Referrals'), ('engagement','Engagement'), ('followers','Followers'), ('delivered','Delivered'), ('name','Name')] %}
-  <a class="chip {{ 'is-active' if sort == key }}" href="{{ url_for('creators', sort=key) }}">{{ label }}</a>
+  <a class="chip {{ 'is-active' if sort == key }}" data-sort="{{ key }}"
+     href="{{ url_for('creators', sort=key, q=q) if q else url_for('creators', sort=key) }}">{{ label }}</a>
   {% endfor %}
 </div>
 
@@ -20,16 +27,17 @@
     <thead>
       <tr>
         <th>Creator</th>
-        <th>Handles</th>
         <th>Source</th>
-        <th class="num">Followers</th>
+        {% for platform in platforms %}
+        <th class="num">{{ platform_labels[platform] }}</th>
+        {% endfor %}
         <th class="num">Delivered</th>
         <th class="num">Referrals</th>
       </tr>
     </thead>
     <tbody>
       {% for c in creators %}
-      <tr>
+      <tr class="creator-row" data-search="{{ c.search_text }}">
         <td>
           <div class="who">
             {{ avatar(c) }}
@@ -39,20 +47,81 @@
             </div>
           </div>
         </td>
-        <td>
-          {% for h in c.handles %}
-          <span class="badge badge-platform">{{ h.platform_label }}</span>
-          {% endfor %}
-        </td>
         <td class="row-sub">{{ c.source_label }}</td>
-        <td class="num">{{ c.follower_count | compact }}</td>
+        {#- One column per platform. Three different things can be true and
+            they must not look alike: not on the platform (blank), on it but
+            never measured (a dash), and measured (a number — zero included). -#}
+        {% for platform in platforms %}
+        {% set on = c.handles_on(platform) %}
+        <td class="num">
+          {%- if not on -%}
+          {%- elif c.followers_on(platform) is none -%}
+            <span class="muted" title="On {{ platform_labels[platform] }} as {{ on[0].handle }} — followers not checked yet">—</span>
+          {%- else -%}
+            <span title="{{ on[0].handle }}{% if on[0].followers_checked_on %} · checked {{ on[0].followers_checked_on | shortdate }}{% endif %}">{{ c.followers_on(platform) | compact }}</span>
+          {%- endif -%}
+        </td>
+        {% endfor %}
         <td class="num">{{ c.delivered_count }}</td>
         <td class="num">{{ c.total_referrals | thousands }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="empty">No creators yet.</td></tr>
+      <tr><td colspan="7" class="empty">No creators yet.</td></tr>
       {% endfor %}
+      <tr id="creator-no-match" hidden><td colspan="7" class="empty">Nobody matches that search.</td></tr>
     </tbody>
   </table>
 </div>
+
+<script>
+// Instant filter over the rows already on the page. Each row carries a
+// data-search string (name, every email, every handle) built server-side, so
+// this never needs a round trip. Every word typed has to match somewhere.
+(function () {
+  var input = document.getElementById("creator-search");
+  if (!input) return;
+  var rows = Array.prototype.slice.call(document.querySelectorAll("tr.creator-row"));
+  var count = document.getElementById("creator-count");
+  var none = document.getElementById("creator-no-match");
+  var total = rows.length;
+
+  function plain(text) {
+    return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  }
+
+  function apply() {
+    var words = plain(input.value).split(/\s+/).filter(Boolean);
+    var shown = 0;
+    rows.forEach(function (row) {
+      var hay = row.getAttribute("data-search") || "";
+      var hit = words.every(function (w) { return hay.indexOf(w) !== -1; });
+      row.hidden = !hit;
+      if (hit) shown += 1;
+    });
+    count.textContent = words.length ? shown + " of " + total : String(total);
+    none.hidden = !(words.length && shown === 0);
+
+    // Keep the query in the URL and on the sort links, so re-sorting or
+    // reloading doesn't throw the search away.
+    var q = input.value.trim();
+    var url = new URL(window.location.href);
+    if (q) url.searchParams.set("q", q); else url.searchParams.delete("q");
+    window.history.replaceState(null, "", url);
+    document.querySelectorAll("a.chip[data-sort]").forEach(function (chip) {
+      var link = new URL(chip.href, window.location.href);
+      if (q) link.searchParams.set("q", q); else link.searchParams.delete("q");
+      chip.href = link.pathname + link.search;
+    });
+  }
+
+  input.addEventListener("input", apply);
+  // "/" jumps to the box, Escape clears it.
+  document.addEventListener("keydown", function (event) {
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if (event.key === "/" && !typing) { event.preventDefault(); input.focus(); input.select(); }
+    if (event.key === "Escape" && document.activeElement === input) { input.value = ""; apply(); }
+  });
+  if (input.value) apply();
+})();
+</script>
 {% endblock %}

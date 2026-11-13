@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_avatar.html" import avatar with context %}
+{% block title %}{{ creator.name }} · {{ campaign.name }} · creatorwise{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <p class="eyebrow">
+    <a href="{{ url_for('campaigns') }}">Campaigns</a> ·
+    <a href="{{ url_for('campaign_detail', slug=campaign.slug) }}">{{ campaign.name }}</a>
+  </p>
+  <h1 class="page-title who">{{ avatar(creator, "md") }}<span>{{ creator.name }}</span></h1>
+  <p class="page-sub">
+    {% if participation %}<span class="badge badge-{{ participation.status }}">{{ participation.status_label }}</span> · {% endif %}
+    <a href="{{ url_for('creator_detail', creator_id=creator.id) }}">Full profile</a>
+  </p>
+</div>
+
+<div class="panel">
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-label">Referrals</div>
+      <div class="stat-value">{{ (referrals | thousands) if referrals is not none else "—" }}</div>
+      <div class="stat-note">
+        {% if referrals is none %}
+          not measured for this campaign
+        {% elif campaign.referral_window_label %}
+          {{ campaign.referral_window_label }}{% if campaign.referrals_still_counting %} (so far){% endif %} · for the creator, not per piece
+        {% else %}
+          for the creator, not per piece
+        {% endif %}
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Pieces</div>
+      <div class="stat-value">{{ pieces | length }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2 class="section-title">Content for {{ campaign.name }}</h2>
+  <div class="ugc-grid">
+    {% for p in pieces %}
+    <a class="ugc-card" href="{{ url_for('ugc_detail', piece_id=p.id) }}">
+      {% if p.id in media_ids %}
+      <div class="ugc-thumb has-media">
+        <img class="ugc-thumb-img" src="{{ url_for('ugc_media', piece_id=p.id, name=media_thumb(p.id)) }}" alt="" loading="lazy">
+      </div>
+      {% else %}
+      <div class="ugc-thumb">
+        {% if p.hook %}<span class="ugc-thumb-hook">{{ p.hook }}</span>{% else %}<span class="ugc-thumb-empty">No preview saved yet</span>{% endif %}
+      </div>
+      {% endif %}
+      <h3 class="ugc-title">{{ p.display_title }}</h3>
+      <p class="ugc-creator">{% if p.creators | length > 1 %}{{ p.byline }} · {% endif %}{{ p.platform_summary }}{% if p.posted_on %} · {{ p.posted_on | shortdate }}{% endif %}</p>
+    </a>
+    {% else %}
+    <p class="empty">Nothing posted for this campaign yet.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

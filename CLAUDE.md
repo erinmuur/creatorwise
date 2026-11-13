@@ -27,6 +27,11 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `tools/refresh_referrals.py` | load per-creator referral counts for a campaign |
 | `avatars.py` | profile photos on disk under `data/avatars/` |
 | `tools/fetch_avatars.py` | download profile photos from Readwise Books profiles |
+| `media.py` | saved videos / carousel slides / transcripts under `data/media/` |
+| `tools/import_media.py` | drop folders per post, then file what a person saved |
+| `tools/transcribe_media.py` | local Whisper transcripts; Vision OCR for slides |
+| `tools/refresh_followers.py` | worklist of handles; load follower readings with history |
+| `tools/fetch_youtube_followers.py` | subscriber counts from the YouTube Data API |
 | `templates/` | Jinja templates |
 | `static/` | CSS and assets |
 | `data/` | SQLite DB — gitignored, persistent in production |
@@ -167,13 +172,16 @@ recruitment export has no campaign column and its onboarding dates span Jul
 Bookwise Softlaunch, from the opt-ins sheet on 2026-11-09: 154 participants —
 8 contacted, 69 opted in, 22 wave 2, 11 briefed, 42 delivered, 2 declined —
 with 49 pieces from 76 links (26 of them cross-posted). Referrals are the
-live figures, not the sheet's: 577 across 50 creators, counted over
-Jul 15 – Oct 1 2026 from invite-code redemptions.
+live figures, not the sheet's: 581 across 52 creators (the duo's personal
+addresses added 4), counted over the campaign's own dates, Jul 1 – Oct 1 2026,
+from invite-code redemptions. Widening from Jul 15 to Jul 1 added nothing.
 
 Readwise Books Announcement, from the October outreach sheet on 2026-11-09:
 202 participants — 5 not contacted, 57 contacted, 94 opted in, 42 delivered,
-4 declined — with 57 pieces from 79 links, and 1,700 referrals across 81
-creators counted Oct 28 – Nov 9 2026. **41 of those creators earned referrals
+4 declined — with 57 pieces from 79 links. Referrals were 1,700 across 81
+creators counted Oct 28 – Nov 9 2026, then 1,758 when refreshed through
+Nov 10 (the campaign runs Oct 28 – Dec 1 2026, so the window is to date and
+must be refreshed after it closes). **41 of those creators earned referrals
 without posting any content** (643 between them), which is why referrals are
 not stored per piece.
 
@@ -199,11 +207,20 @@ Its sheet's Status column tops out at "Opted In" — there is no "Posted" value
 content_importer.py). Anything more specific than `opted_in` stands, and a
 contradiction is reported instead.
 
-**The Stickers Beta had no referral component** — its zero is correct, not a
-gap, and no window exists to pull one over. Don't go looking.
+**The Stickers Beta's zero referrals is a measurement, not a gap.** It ran
+Oct 1 2025 – Mar 31 2026 (dates from Erin, 2026-11-10), and counted over that
+window every participant has 0 redemptions — because no participant had an
+invite code yet: the earliest was created 2026-06-05. The 24 zero rows are
+stored with that window. Don't go looking for more.
 
-Still absent: engagement numbers for every piece, both campaigns' dates and
-payment terms, and all payment details.
+Campaign dates (from Erin, 2026-11-10): Stickers Beta Oct 1 2025 – Mar 31
+2026, Softlaunch Jul 1 – Oct 1 2026, Announcement Oct 28 – Dec 1 2026
+(`active` until then). Referral windows match them. Only participants are
+credited: in the softlaunch window, 35 redemptions came from people who were
+in the announcement but not the softlaunch, and they are skipped, not counted.
+
+Still absent: engagement numbers for every piece, payment terms, and all
+payment details.
 
 One opt-ins row is knowingly not imported: it carries one creator's address
 under a different creator's name. Confirmed with Erin on 2026-11-09 — the two
@@ -294,7 +311,13 @@ UgcPiece/PlatformPost rows for one campaign. Same `plan()` / `apply()` shape as
   fallback: `tools/refresh_referrals.py` replaces them with real per-creator
   totals, and clears them so one question doesn't have two answers.
 - Links on a row merge into one cross-posted piece **only** when there's
-  exactly one per platform and more than one platform. Four reels on a row are
+  exactly one per platform and more than one platform. When saved media later
+  proves a pairing the sheet couldn't (same length, same transcript), merge
+  the pieces by hand: move the posts, delete the empty piece. Move them with
+  `keep.posts.append(post)` (or remove them from the old piece's collection
+  first) — changing `post.ugc_piece_id` alone leaves them in the old piece's
+  `posts`, and its `delete-orphan` cascade deletes them with it. That lost two
+  TikTok links once; they were restored from the backup. Four reels on a row are
   four videos; two TikToks beside two Reels is an unknowable pairing, so it
   stays four pieces.
 - A handle match is **strong only on the platform the link claims**. Somebody's
@@ -320,7 +343,7 @@ made it. Use `piece.creators` / `piece.byline` for display and
 the pieces they lead. **Never duplicate a piece to credit a second person**:
 campaign totals sum `campaign.ugc`, so a copy double-counts the video and,
 later, its views and likes. The softlaunch has one such piece, which is why it
-reads 154 participants and 42 delivered on 49 videos.
+reads 154 participants and 42 delivered on 46 pieces.
 
 ## Referrals
 
@@ -345,6 +368,22 @@ per-piece measurement if attribution ever gets that precise.
   query it; `tools/refresh_referrals.py` has the exact SQL in its docstring.
 - A creator missing from a later file drops to zero rather than keeping a
   stale number that looks current.
+- **A video shows its creator's figure for the campaign, labelled as such**
+  (`UgcPiece.creator_referrals`, "creator ref" on cards). Every video by one
+  creator in a campaign shows the same number; a shared video shows its
+  makers' combined figure. Sorting and the overview's top videos use it, with
+  one video per creator per campaign. Never divide it among videos — no
+  source says which video drove which signup.
+- A running campaign's total says "(so far)" when the counted window ends
+  before `ends_on` (`Campaign.referrals_still_counting`).
+- **The campaign page is one card per creator** (Erin's call, 2026-11-13):
+  thumbnail from their newest piece with saved media, their name, and
+  `Campaign.referrals_for(creator)` — their own figure, not a combined one.
+  The card opens `/campaigns/<slug>/creators/<id>` with everything they
+  posted for that campaign. `Campaign.creator_groups` puts a shared piece
+  under each maker, so cards can outnumber pieces' leads; campaign totals
+  still count every piece once, from `ugc`. Card count equals
+  `delivered_count` on all three campaigns.
 
 Verified on 2026-11-09 against the softlaunch: over Jul 15 – Oct 1 2026,
 35 of the sheet's 41 numbers matched the live count exactly, which is what
@@ -352,6 +391,41 @@ established that the sheet was campaign-windowed and that this window is the
 right one. The sheet missed 13 creators who had earned referrals (58 in all,
 one of them 25 with no content at all), and was ~6 weeks stale — its totals
 matched the live cumulative figure around late September.
+
+## Follower counts
+
+`SocialHandle.follower_count` is the latest good value; `FollowerSnapshot`
+keeps every reading behind it — count, date, source, and `status="not_found"`
+for an account that could not be found. The creators page shows one column per
+measured platform, and **three states that must not look alike**: blank (not
+on the platform), a dash (on it, never checked), a number (checked — zero
+included). `Creator.followers_on()` returns None, not 0, for unmeasured.
+
+- `tools/refresh_followers.py --list` is the worklist; `--counts FILE
+  --source "..."` loads readings. `--source` is mandatory. One account on two
+  creators' profiles gets the same reading on both — one audience, not an
+  ambiguity.
+- **creatorwise does not fetch Instagram or TikTok profiles, and must not be
+  made to by disguising requests.** Both gate profile pages against automated
+  readers. A probe that sent a browser User-Agent and a link-preview bot's
+  User-Agent to get past that was refused on 2026-11-10 as bot-check
+  circumvention, correctly. Readings for those platforms come from an official
+  API, a data vendor, or a person — and are loaded with the tool above.
+- YouTube is the exception because it has a real public API:
+  `tools/fetch_youtube_followers.py` needs `YOUTUBE_API_KEY` in the
+  environment (never in the repo) and writes readings for the loader. A hidden
+  subscriber count is skipped, never stored as zero.
+- As of 2026-11-10: Instagram 188 of 201 confirmed, TikTok 208 of 235, YouTube
+  0 of 48 (waiting on an API key). Read one profile at a time in the browser
+  pane, ~30s apart, Instagram signed in, TikTok logged out. TikTok's exact
+  count is `statsV2.followerCount`; `stats.followerCount` rounds above 10K.
+- **An account with no posts and no followers is not a reading of zero.** Two
+  Instagram handles on file (and one earlier, since corrected) turned out to be
+  empty placeholder accounts, not the creator's real one. They are left
+  unmeasured rather than shown as 0.
+- TikTok's **audience controls** hide counts from logged-out visitors (seven
+  creators so far). Those, and handles TikTok calls "couldn't find" while
+  logged out, need a signed-in read before anything is recorded.
 
 ## Profile photos
 
@@ -371,8 +445,11 @@ persistent volume. Served by `/creators/<id>/avatar`, behind the session gate.
   106 MB for 262 creators; the thumbnails are 3.8 MB.
 - Social profiles are the fallback for creators with no Books photo, and only
   that: Instagram and TikTok image URLs are signed and expire within days, so
-  they must be downloaded, never hot-linked. YouTube gives `og:image` to a
-  plain request; Instagram and TikTok only render in a real browser.
+  they must be downloaded, never hot-linked. The 32 social photos loaded on
+  2026-11-10 were read one profile at a time in the browser pane, but the image
+  files were then downloaded with a browser-like User-Agent — the same
+  disguise later refused for follower counts. Don't repeat that; have the
+  browser itself save the image, or ask the creator for one.
 - Files are validated by their leading bytes, not by extension or
   Content-Type — a CDN can answer a missing object with a 200 and an HTML page.
 - `{% from "_avatar.html" import avatar with context %}` — **the `with context`
@@ -391,6 +468,163 @@ points at a TikTok handle that shows exactly that message. Treat it as "not
 visible without a login", report it, and don't delete the handle on that
 evidence alone. A handle is confirmed stale only when the creator has visibly
 moved — a renamed account, or Erin saying so.
+
+## Saved media and transcripts
+
+A piece's video or carousel slides live in `data/media/<piece id>/`
+(`video.mp4`, `poster.jpg`, `image-01.jpg`…, `transcript.txt`, `source.json`).
+No table, same as avatars: having media is having files. Gitignored, on the
+persistent volume, served by `/ugc/<id>/media/<name>` behind the session gate,
+and only names the piece actually has are served.
+
+- **creatorwise does not download from Instagram or TikTok.** Logged out,
+  TikTok walls the page and streams video as a `blob:`; Instagram's website
+  has no download at all. Downloader tools (yt-dlp, gallery-dl) work by
+  imitating a browser, which this project has ruled out. Erin chose
+  (2026-11-10) to save files herself with the platforms' own controls.
+  The browser pane is no way round this either. Having it read a carousel's
+  image bytes and hand them to a local receiver was refused (2026-11-11) as
+  getting around the sites' access controls; a test of the pane saving one
+  slide as a download did land in ~/Downloads, late, but is the same act and
+  wasn't pursued. Reading a post page to label its folder is fine.
+- **TikTok's own "Download video" is the way to get TikTok videos** (at
+  Erin's request, 2026-11-11). In the browser pane, logged out, right-click
+  the playing video: TikTok's menu offers Download video when the creator
+  allows saving, and the file lands in ~/Downloads as `Download.mp4`
+  (H.264, 576x1024). TikTok's interests picker has its own close button;
+  closing it is fine. **When the creator has turned saving off
+  (`author.downloadSetting` 3) the menu has no Download option — that is
+  their choice, so leave it**: those need a screen recording by Erin or the
+  file from the creator.
+- **Carousel slides can be screenshots of the screen** (Erin's call,
+  2026-11-11): in the browser pane, signed in to Instagram as Erin, step
+  through the slides with the post's own arrow and capture what is displayed,
+  two or three shots per slide (the slide is taller than the pane), joined
+  with ffmpeg from the clean band between the fixed header and the floating
+  share button. Result ~782-800px wide versus 1080 originals, with
+  Instagram's arrows and slide dots on them as in any screenshot. This is
+  capture of the rendered page, not the image files — keep it that way.
+  Logged-out TikTok walls photo posts behind a login modal; don't dismiss
+  it to get at them.
+- `tools/import_media.py --prepare --campaign SLUG` makes one folder per post
+  in `data/media-inbox/SLUG/`, named `<piece id> <creator> - <platform> <kind>`
+  with a `.webloc` that opens the post. Drop the file(s) in; run the importer
+  (dry run unless `--apply`). Files are recognised by bytes; HEIC becomes JPEG
+  and HEVC becomes H.264 so every browser plays them. Slides keep file-name
+  order. Two videos in one post's folder is held, not guessed.
+- **Match saved files to posts by length, not by name.** The softlaunch batch
+  came named by first name; ambiguous ones (four of one creator's reels, two
+  creators sharing a first name) were settled by comparing the file's duration with
+  the post's. That also showed one creator's two TikToks are the same videos
+  as her two reels (172s, 91s): the CRM had listed them as four pieces, and
+  they were merged into two cross-posted ones on 2026-11-10. **No video
+  appears twice** — the importer holds a file within 0.15s of a video
+  already stored for the same creator (0.15s, not 1s: two of one creator's
+  different reels are 0.23s apart). Merge the pieces instead.
+- `tools/transcribe_media.py` runs Whisper (`small`) locally — no audio leaves
+  the machine — and reads carousel text with macOS Vision (`tools/ocr.swift`).
+  Extras in `requirements-media.txt`, not installed in production. It decodes
+  audio with ffmpeg itself because faster-whisper's PyAV call breaks on
+  current PyAV. A video with no speech says so rather than keeping Whisper's
+  guesses at music. An empty hook is filled with the first spoken line.
+- Transcripts are machine output: book titles and names will be wrong at
+  times. The page says so.
+- **Song lyrics are not a transcript.** Six softlaunch videos are music over
+  on-screen text. Without the speech filter Whisper writes out the song (and
+  invents "thanks for watching" over music), so `--verify` only *flags* a
+  transcript that misses its edges; `--redo` is a deliberate second step.
+  Videos with under 15 spoken words get their on-screen text instead, read
+  from a frame every 1.5s. Frames with more than 8 lines of text are skipped:
+  that is a filmed book page or app screen, someone else's words. Hooks come
+  from speech only — OCR'd captions read too poorly to stand as a hook.
+- **Titles are quotes.** A piece's `title` holds a phrase lifted verbatim from
+  its transcript, in curly quotes, so a card says what the video is about
+  rather than "Instagram + TikTok post". Platforms move to the line beneath
+  (`UgcPiece.platform_summary`). Picked by hand on 2026-11-10 and checked to
+  occur in the transcript; captions from on-screen text had obvious OCR
+  misreads corrected. Pieces with nothing usable keep the platform label.
+- Announcement, 2026-11-11: 24 of 57 have video, all via TikTok's own
+  Download, transcribed and titled. Six TikToks had no Download option
+  (saving off), skipped. The pane sometimes leaves a finished download as a
+  hidden `.…claudefordesktop.…` temp file instead of `Download.mp4`; it is
+  the complete file once its size stops changing and ffprobe reads it.
+  Still missing: Instagram-only reels (12), the YouTube-only video, the
+  expired story, and the 3 TikTok-only carousels (103, 116, 122). The 10
+  Instagram carousels were loaded from screenshots the same afternoon,
+  bringing it to 34 of 57. Video slides inside a carousel (071 has two) are
+  paused on their first frame before capture, or the shots of one slide
+  catch different frames; Instagram's play button shows on that still.
+- Announcement after the re-import, 2026-11-13: 109 pieces, 49 with media.
+  15 more TikToks via TikTok's own Download (signed in as Erin: TikTok now
+  shows a logged-out visitor a birthday age gate, which is Erin's to answer,
+  never ours), plus 072, an Instagram-only reel whose identical TikTok
+  (same day, same length, same caption) was found on her profile and added
+  as its cross-post. Finding TikTok copies of Instagram-only reels works,
+  but TikTok's profile grid starts answering "Something went wrong" after a
+  few profiles in quick succession; stop rather than push, since it is
+  Erin's account. Saving off: 084, 087, 089, 095, 106, 121, 128, 159.
+  Two duplicates merged the same day (Erin's yes), leaving 107 pieces with
+  49 holding media: 174 was 123's TikTok again under its full URL (123 had a
+  short link), so 123's link was rewritten to the full form — keep it that
+  way, or a re-import recreates the duplicate — and 174 deleted; 170's reel
+  was the same video as TikTok 172 (126s, same day), so the reel moved to
+  172 and 170 was deleted. Not merged: 088's reel matches saving-off TikTok
+  089 (119s), but neither has media yet to prove it.
+  146 and 148 are 7s clips over a film quote and a song: like lyrics, that
+  audio is not a transcript, so they carry their on-screen text instead.
+  169's caption is about voting, not the app; it stays on the sheet's word.
+  The pane names every TikTok download `Download.mp4` and renames it from a
+  hidden temp file when finished; moving the temp file before that rename
+  left 0-byte files and made the pane ask Erin to replace. Wait for the
+  rename, and start no download while a `Download*.mp4` is in ~/Downloads.
+- Stickers Beta, 2026-11-11: 13 of 21 have video, all via TikTok's own
+  Download, transcribed and titled (one, a music video over a stats
+  screen, keeps its platform label). Four of the 13 are music over
+  on-screen text; Whisper's "It's so easy" on two of them was a lyric and
+  was replaced with the no-speech marker. Still missing: the four
+  saving-off TikToks, the unavailable one, and the TikTok carousel (019).
+  The two Instagram posts (011, a photo; 015, 8 slides) were captured from
+  screenshots later that day — 15 of 21. Both are reading-stats screens
+  with no phrase to quote, so they keep the platform label.
+- Stickers Beta cross-posts, 2026-11-12: the CRM listed only TikTok links,
+  but six of those videos were also posted as Instagram reels, found by
+  reading each creator's grid within a week of the TikTok and confirmed by
+  length plus caption or transcript (002, 006, 008, 009, 017, 021). 017's
+  reel is the same review cut to 176s for Instagram's 3-minute cap (the
+  TikTok is 229s), so length alone would have missed it. Every other
+  Stickers creator was checked and had no copy, or a private or missing
+  Instagram account.
+- Stickers Beta, 2026-11-10: nothing saved yet. Its 21 drop folders name
+  each post's kind and length, read from the post page: 17 TikTok videos,
+  1 TikTok carousel (8 slides), 1 Instagram carousel (8), 1 Instagram single
+  photo, and one TikTok shortlink that resolves to a video TikTok reports
+  unavailable (posted 2026-01-08, probably deleted or made private). Four
+  creators have TikTok saving turned off (`author.downloadSetting` 3), so
+  those need a screen recording or the creator's file.
+- Softlaunch coverage, 2026-11-10: 46 pieces after de-duplication, 34 with
+  video (from Erin's 35 files; one 4-second silent clip matched no post). The
+  12 missing are all carousels. The sheet's 42 delivered creators are 30
+  complete, 1 partial, 11 with nothing — every one of those 11 posted a
+  carousel. A TikTok the sheet put on a Wave 2 creator's softlaunch row was
+  posted 2026-10-24 (from its id), after the softlaunch ended, and is the
+  same post as her announcement piece; the softlaunch copy was removed.
+- Softlaunch carousels, 2026-11-11: 10 of 12 loaded from screenshots
+  (the 10 Instagram ones, 71 slides), read with Vision and titled from
+  their first slide (one cover slide is in a script font Vision missed, so
+  its title comes from slide 2). The two TikTok-only carousels came from
+  Erin's own screenshots (piece 47: 4 of 5 slides — slide 4 deliberately
+  skipped; piece 63: 9), with the creators' captions added to the transcript
+  and TikTok's overlay lines (name, caption preview, sound) stripped. All 46
+  softlaunch pieces now have media.
+- Carousels, 2026-11-11: every folder now names its slide count, read from
+  the post page — 12 softlaunch, 13 announcement (whose 44 other posts are
+  videos, one an expired story). TikTok photo pages only expose their count
+  when opened as `/video/<id>`, which redirects. Two pairs on the
+  announcement may be one carousel cross-posted (same creator, same or
+  near count): compare the slides before keeping both — 102 against 103,
+  118 against 116. The Instagram halves are loaded; the TikTok halves need
+  Erin's screenshots, so the comparison is still open. The importer's
+  duplicate guard only checks videos.
 
 ## The mail scanner
 

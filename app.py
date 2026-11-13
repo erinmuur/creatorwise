@@ -24,6 +24,7 @@ from models import (
 import inbox as inbox_lib
 import auth
 import avatars
+import media
 import gmail
 import scan as scan_lib
 
@@ -105,7 +106,46 @@ def inject_globals():
         "today": date.today(),
         "inbox_pending": InboxItem.query.filter_by(status="pending").count(),
         "avatar_ids": _avatar_ids(),
+        "media_ids": _media_ids(),
+        "media_thumb": _media_thumb,
     }
+
+
+def _media_folder():
+    # MEDIA_DIR, like AVATAR_DIR, lets tests use a scratch folder.
+    return app.config.get("MEDIA_DIR") or media.directory(
+        app.config["SQLALCHEMY_DATABASE_URI"]
+    )
+
+
+def _media_ids():
+    """Which pieces have a saved video or slides — once per request."""
+    if "media_ids" not in g:
+        g.media_ids = media.ids(_media_folder())
+    return g.media_ids
+
+
+def _media_thumb(piece_id):
+    return media.thumbnail(_media_folder(), piece_id)
+
+
+@app.route("/ugc/<int:piece_id>/media/<name>")
+def ugc_media(piece_id, name):
+    """A piece's saved video, poster, slide or transcript.
+
+    Only names the piece actually has are served, so this cannot be walked
+    into the rest of the data directory. Behind the session gate: these are
+    creators' own videos and the dashboard is not public. `conditional`
+    answers range requests, which is what lets a video seek.
+    """
+    path = media.servable(_media_folder(), piece_id, name)
+    if path is None:
+        abort(404)
+    download = request.args.get("download") == "1"
+    return send_file(
+        path, conditional=True, max_age=3600, as_attachment=download,
+        download_name=f"piece-{piece_id}-{name}" if download else None,
+    )
 
 
 def _avatar_folder():
@@ -141,7 +181,20 @@ def index():
     campaigns = Campaign.query.order_by(Campaign.starts_on.desc()).all()
     pieces = UgcPiece.query.all()
 
-    top_pieces = sorted(pieces, key=lambda p: p.referrals, reverse=True)[:5]
+    # Ranked on the creator's campaign figure, since a video has none of its
+    # own. One video per creator per campaign, so somebody with four videos
+    # doesn't fill the list four times with the same number.
+    seen, top_pieces = set(), []
+    for piece in sorted(
+        (p for p in pieces if p.creator_referrals),
+        key=lambda p: (-p.creator_referrals, p.posted_on or date.max),
+    ):
+        key = (piece.campaign_id, frozenset(c.id for c in piece.creators))
+        if key not in seen:
+            seen.add(key)
+            top_pieces.append(piece)
+        if len(top_pieces) == 5:
+            break
     creators = Creator.query.all()
     top_creators = sorted(creators, key=lambda c: c.total_referrals, reverse=True)[:5]
 
@@ -178,11 +231,14 @@ def campaigns():
     return render_template("campaigns.html", campaigns=items)
 
 
-SORTS = {
-    "posted": ("Post date", lambda p: (p.posted_on or date.min)),
-    "referrals": ("Referrals", lambda p: p.referrals),
-    "likes": ("Likes", lambda p: p.likes),
-    "comments": ("Comments", lambda p: p.comments),
+# The campaign page is one card per creator: referrals are earned by a person
+# in a campaign, not by a video, so that is the unit worth ranking.
+CREATOR_SORTS = {
+    "referrals": ("Referrals", lambda g: (
+        -1 if g.referrals is None else g.referrals, g.creator.name.lower())),
+    "pieces": ("Pieces", lambda g: (len(g.pieces), g.creator.name.lower())),
+    "posted": ("Latest post", lambda g: (g.latest or date.min, g.creator.name.lower())),
+    "name": ("Name", lambda g: g.creator.name.lower()),
 }
 
 
@@ -191,12 +247,13 @@ def campaign_detail(slug):
     campaign = Campaign.query.filter_by(slug=slug).first() or abort(404)
 
     sort = request.args.get("sort", "referrals")
-    if sort not in SORTS:
+    if sort not in CREATOR_SORTS:
         sort = "referrals"
-    direction = request.args.get("dir", "desc")
+    # Names read A→Z by default; every other sort leads with the most.
+    direction = request.args.get("dir", "asc" if sort == "name" else "desc")
     reverse = direction != "asc"
 
-    pieces = sorted(campaign.ugc, key=SORTS[sort][1], reverse=reverse)
+    groups = sorted(campaign.creator_groups, key=CREATOR_SORTS[sort][1], reverse=reverse)
 
     # Everyone not yet delivered, grouped by how far they got rather than by
     # name: on a campaign still being worked, most of this list is people who
@@ -211,11 +268,31 @@ def campaign_detail(slug):
     return render_template(
         "campaign_detail.html",
         campaign=campaign,
-        pieces=pieces,
+        groups=groups,
         outstanding=outstanding,
         sort=sort,
         direction=direction,
-        sorts=SORTS,
+        sorts=CREATOR_SORTS,
+    )
+
+
+@app.route("/campaigns/<slug>/creators/<int:creator_id>")
+def campaign_creator(slug, creator_id):
+    """Everything one creator posted for one campaign."""
+    campaign = Campaign.query.filter_by(slug=slug).first() or abort(404)
+    creator = db.session.get(Creator, creator_id) or abort(404)
+    participation = next(
+        (p for p in campaign.participations if p.creator_id == creator.id), None)
+    pieces = campaign.pieces_by(creator)
+    if participation is None and not pieces:
+        abort(404)
+    return render_template(
+        "campaign_creator.html",
+        campaign=campaign,
+        creator=creator,
+        participation=participation,
+        pieces=pieces,
+        referrals=campaign.referrals_for(creator),
     )
 
 
@@ -231,7 +308,12 @@ def creators():
         "delivered": lambda c: -c.delivered_count,
     }
     items.sort(key=keys.get(sort, keys["referrals"]))
-    return render_template("creators.html", creators=items, sort=sort)
+    # The filtering itself happens in the page, as you type. `q` only travels
+    # in the URL so a search survives a re-sort, a reload or a shared link.
+    return render_template(
+        "creators.html", creators=items, sort=sort,
+        q=request.args.get("q", "").strip(),
+    )
 
 
 @app.route("/creators/<int:creator_id>")
@@ -259,7 +341,8 @@ def ugc_detail(piece_id):
     posts = sorted(piece.posts, key=lambda p: -(p.views or 0))
     snapshots = sorted(piece.referral_snapshots, key=lambda s: s.window_days)
     return render_template(
-        "ugc_detail.html", piece=piece, posts=posts, snapshots=snapshots
+        "ugc_detail.html", piece=piece, posts=posts, snapshots=snapshots,
+        stored=media.listing(_media_folder(), piece.id),
     )
 
 

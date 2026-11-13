@@ -12,7 +12,7 @@
     <a href="{{ url_for('creator_detail', creator_id=c.id) }}">{{ c.name }}</a>{% if not loop.last %} &amp; {% endif %}
     {%- endfor %}
     · Posted {{ piece.posted_on | shortdate }}
-    {% if piece.is_cross_posted %}· {{ piece.posts | length }} platforms{% endif %}
+    · {{ piece.platform_summary }}
   </p>
 </div>
 
@@ -25,20 +25,27 @@
     </div>
     {% endif %}
 
+    {% if stored.transcript %}
+    <div class="panel" style="margin-top: var(--space-16)">
+      <p class="eyebrow">Transcript</p>
+      <div class="transcript">{{ stored.transcript }}</div>
+      <p class="row-sub" style="margin: var(--space-12) 0 0">
+        {% if stored.video %}Machine transcript (Whisper, run locally){% else %}Text read off the slides{% endif %} — names and titles may be wrong.
+        <a href="{{ url_for('ugc_media', piece_id=piece.id, name='transcript.txt', download=1) }}">Download .txt</a>
+      </p>
+    </div>
+    {% endif %}
+
     <div class="panel" style="margin-top: var(--space-16)">
       <div class="stat-row">
         <div class="stat">
-          <div class="stat-label">Referrals</div>
-          <div class="stat-value">{{ piece.referrals | thousands }}</div>
+          <div class="stat-label">Creator referrals</div>
+          <div class="stat-value">{{ (piece.creator_referrals | thousands) if piece.creator_referrals is not none else "—" }}</div>
           <div class="stat-note">
-            {% if not piece.referral_snapshots %}
+            {% if piece.creator_referrals is none %}
               Not measured yet
-            {% elif not piece.has_window_referrals %}
-              As reported — no measurement window recorded
-            {% elif piece.referrals_are_final %}
-              Final, {{ referral_window }}-day window
             {% else %}
-              Provisional — window still open
+              {{ piece.byline }}'s total for {{ piece.campaign.name }}{% if piece.campaign.referral_window_label %}, {{ piece.campaign.referral_window_label }}{% if piece.campaign.referrals_still_counting %} so far{% endif %}{% endif %} — referrals are counted per person, not per video
             {% endif %}
           </div>
         </div>
@@ -115,12 +122,26 @@
 
   <aside>
     <div class="panel">
+      {% if stored.video %}
       <p class="eyebrow">Video</p>
-      {% if piece.video_path %}
-      <p class="row-sub" style="margin: 0; word-break: break-all">{{ piece.video_path }}</p>
-      <p class="row-sub" style="margin: var(--space-12) 0 0">Download not wired up yet.</p>
+      <video class="media-video" controls preload="metadata"
+             src="{{ url_for('ugc_media', piece_id=piece.id, name=stored.video) }}"
+             {% if stored.poster %}poster="{{ url_for('ugc_media', piece_id=piece.id, name=stored.poster) }}"{% endif %}></video>
+      <p class="row-sub" style="margin: var(--space-8) 0 0">
+        <a href="{{ url_for('ugc_media', piece_id=piece.id, name=stored.video, download=1) }}">Download video</a>
+      </p>
+      {% elif stored.images %}
+      <p class="eyebrow">Carousel · {{ stored.images | length }} slides</p>
+      <div class="media-gallery">
+        {% for name in stored.images %}
+        <a href="{{ url_for('ugc_media', piece_id=piece.id, name=name) }}" target="_blank" rel="noopener">
+          <img src="{{ url_for('ugc_media', piece_id=piece.id, name=name) }}" alt="Slide {{ loop.index }}" loading="lazy">
+        </a>
+        {% endfor %}
+      </div>
       {% else %}
-      <p class="row-sub" style="margin: 0">No local copy saved.</p>
+      <p class="eyebrow">Video</p>
+      <p class="row-sub" style="margin: 0">No copy saved yet. Drop it in <code>data/media-inbox/{{ piece.campaign.slug }}/</code> and run <code>tools/import_media.py</code>.</p>
       {% endif %}
     </div>
 

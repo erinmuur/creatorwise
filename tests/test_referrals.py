@@ -23,6 +23,7 @@ from models import (
     Creator,
     CreatorEmail,
     Participation,
+    PieceCollaborator,
     PlatformPost,
     ReferralSnapshot,
     UgcPiece,
@@ -149,6 +150,63 @@ class ReferralTotalTests(unittest.TestCase):
         parts = {p.creator.name: p for p in self.campaign.participations}
         self.assertEqual(parts["Bea Lune"].referrals, 63)
         self.assertIsNone(parts["Wren Ashby"].referrals)
+
+    # --- what a video page shows ------------------------------------------
+    # A video has no referral number of its own. It shows its creator's
+    # figure for the campaign, which used to read as 0 everywhere once the
+    # per-piece sheet numbers were cleared.
+
+    def piece_of(self, name):
+        return self.people[name].ugc[0]
+
+    def test_a_video_shows_its_creators_campaign_figure(self):
+        self.credit("Bea Lune", 63)
+        self.assertEqual(self.piece_of("Bea Lune").creator_referrals, 63)
+        self.assertEqual(self.piece_of("Bea Lune").referrals, 0)  # still none of its own
+
+    def test_a_measured_campaign_with_nothing_for_this_creator_is_a_real_zero(self):
+        self.credit("Bea Lune", 63)
+        self.assertEqual(self.piece_of("Wren Ashby").creator_referrals, 0)
+
+    def test_an_unmeasured_campaign_shows_nothing_rather_than_zero(self):
+        self.assertIsNone(self.piece_of("Bea Lune").creator_referrals)
+
+    def test_every_video_by_one_creator_carries_the_same_figure_not_a_share(self):
+        bea = self.people["Bea Lune"]
+        second = UgcPiece(creator_id=bea.id, campaign_id=self.campaign.id)
+        db.session.add(second)
+        db.session.commit()
+        self.credit("Bea Lune", 63)
+        self.assertEqual([p.creator_referrals for p in bea.ugc], [63, 63])
+        self.assertEqual(self.campaign.total_referrals, 63)  # counted once
+
+    def test_a_shared_video_carries_everyone_on_it(self):
+        db.session.add(PieceCollaborator(
+            ugc_piece_id=self.piece_of("Bea Lune").id,
+            creator_id=self.people["Rune Pryor"].id,
+        ))
+        db.session.commit()
+        self.credit("Bea Lune", 63)
+        self.credit("Rune Pryor", 25)
+        self.assertEqual(self.piece_of("Bea Lune").creator_referrals, 88)
+
+    def test_a_figure_from_another_campaign_is_not_borrowed(self):
+        other = Campaign(name="Announcement", slug="ann")
+        db.session.add(other)
+        db.session.flush()
+        db.session.add(CampaignReferral(
+            creator_id=self.people["Bea Lune"].id, campaign_id=other.id,
+            referrals=500, window_from=WINDOW[0], window_to=WINDOW[1],
+        ))
+        self.credit("Wren Ashby", 3)
+        self.assertEqual(self.piece_of("Bea Lune").creator_referrals, 0)
+
+    def test_a_running_campaign_says_its_number_is_so_far(self):
+        self.credit("Bea Lune", 63)
+        self.campaign.ends_on = date(2026, 12, 1)
+        self.assertTrue(self.campaign.referrals_still_counting)
+        self.campaign.ends_on = WINDOW[1]
+        self.assertFalse(self.campaign.referrals_still_counting)
 
 
 class RefreshToolTests(unittest.TestCase):

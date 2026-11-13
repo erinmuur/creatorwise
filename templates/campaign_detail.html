@@ -50,7 +50,7 @@
       <div class="stat-value">{{ campaign.total_referrals | thousands }}</div>
       <div class="stat-note">
         {% if campaign.referral_window_label %}
-          {{ campaign.referral_window_label }} · {{ campaign.credited_count }} creators
+          {{ campaign.referral_window_label }}{% if campaign.referrals_still_counting %} (so far){% endif %} · {{ campaign.credited_count }} creators
         {% elif campaign.referrals_are_reported %}
           as reported — no measurement window
         {% else %}
@@ -76,12 +76,14 @@
 </div>
 
 <div class="section">
-  <h2 class="section-title">Content</h2>
+  <h2 class="section-title">Creators ({{ groups | length }})</h2>
 
   <div class="sortbar">
     <span class="sortbar-label">Sort</span>
     {% for key, (label, _) in sorts.items() %}
-      {% set next_dir = 'asc' if (sort == key and direction == 'desc') else 'desc' %}
+      {% set default_dir = 'asc' if key == 'name' else 'desc' %}
+      {% set flipped = 'asc' if direction == 'desc' else 'desc' %}
+      {% set next_dir = flipped if sort == key else default_dir %}
       <a class="chip {{ 'is-active' if sort == key }}"
          href="{{ url_for('campaign_detail', slug=campaign.slug, sort=key, dir=next_dir) }}">
         {{ label }}{% if sort == key %} {{ '↓' if direction == 'desc' else '↑' }}{% endif %}
@@ -90,21 +92,27 @@
   </div>
 
   <div class="ugc-grid">
-    {% for p in pieces %}
-    <a class="ugc-card" href="{{ url_for('ugc_detail', piece_id=p.id) }}">
+    {% for g in groups %}
+    {#- The thumbnail is their newest piece that has saved media, else the
+        newest piece's hook. -#}
+    {% set cover = g.pieces | selectattr("id", "in", media_ids) | first %}
+    <a class="ugc-card creator-card" href="{{ url_for('campaign_creator', slug=campaign.slug, creator_id=g.creator.id) }}">
+      {% if cover %}
+      <div class="ugc-thumb has-media">
+        <img class="ugc-thumb-img" src="{{ url_for('ugc_media', piece_id=cover.id, name=media_thumb(cover.id)) }}" alt="" loading="lazy">
+        {% if g.pieces | length > 1 %}<span class="ugc-count">{{ g.pieces | length }} pieces</span>{% endif %}
+      </div>
+      {% else %}
       <div class="ugc-thumb">
-        <span class="ugc-thumb-hook">{{ p.hook or "" }}</span>
+        {% if g.pieces[0].hook %}<span class="ugc-thumb-hook">{{ g.pieces[0].hook }}</span>{% else %}<span class="ugc-thumb-empty">No preview saved yet</span>{% endif %}
+        {% if g.pieces | length > 1 %}<span class="ugc-count">{{ g.pieces | length }} pieces</span>{% endif %}
       </div>
-      <h3 class="ugc-title">{{ p.display_title }}</h3>
-      <p class="ugc-creator who">{{ avatar(p.creator, "sm") }}<span>{{ p.byline }} · {{ p.posted_on | shortdate }}</span></p>
-      <div class="ugc-stats">
-        <span><b>{{ p.referrals | thousands }}</b> ref</span>
-        <span><b>{{ p.likes | compact }}</b> likes</span>
-        <span><b>{{ p.comments | compact }}</b> com</span>
-      </div>
-      {% if p.posted_on and not p.referrals_are_final %}
-      <p style="margin: var(--space-8) 0 0"><span class="badge badge-provisional">Window still open</span></p>
       {% endif %}
+      <h3 class="ugc-title who">{{ avatar(g.creator, "sm") }}<span>{{ g.creator.name }}</span></h3>
+      <p class="ugc-creator">{{ g.pieces | length }} {{ "piece" if g.pieces | length == 1 else "pieces" }} · {{ g.platforms | join(" + ") }}{% if g.latest %} · latest {{ g.latest | shortdate }}{% endif %}</p>
+      <div class="ugc-stats">
+        <span title="{{ g.creator.name }}'s referrals for this campaign{% if campaign.referral_window_label %}, {{ campaign.referral_window_label }}{% endif %}"><b>{{ (g.referrals | thousands) if g.referrals is not none else "—" }}</b> referrals</span>
+      </div>
     </a>
     {% else %}
     <p class="empty">No content delivered yet.</p>

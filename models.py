@@ -15,6 +15,7 @@ up to the piece. Referrals are snapshotted rather than stored as a single number
 because the campaign metric is "referrals driven 14 days after post date".
 """
 
+import unicodedata
 from datetime import date, timedelta
 
 from flask_sqlalchemy import SQLAlchemy
@@ -226,6 +227,22 @@ class Creator(db.Model):
         return False
 
     @property
+    def search_text(self):
+        """Everything this creator can be found by, lowercased and unaccented.
+
+        Name, every address (not just the primary) and every handle, so the
+        search box finds somebody by whichever of those you happen to remember.
+        Accents are stripped so "zoe" finds "Zoë"; the page strips them
+        from the query the same way.
+        """
+        parts = [self.name or ""] + self.all_emails
+        for handle in self.handles:
+            bare = (handle.handle or "").lstrip("@")
+            parts += [bare, "@" + bare]
+        text = unicodedata.normalize("NFKD", " ".join(parts))
+        return "".join(ch for ch in text if not unicodedata.combining(ch)).lower()
+
+    @property
     def all_emails(self):
         """Every address for this creator, primary first."""
         extra = sorted(
@@ -272,6 +289,21 @@ class Creator(db.Model):
     def follower_count(self):
         """Largest single-platform audience, not the sum — summing double-counts."""
         return max((h.follower_count or 0 for h in self.handles), default=0)
+
+    def handles_on(self, platform):
+        return [h for h in self.handles if h.platform == platform]
+
+    def followers_on(self, platform):
+        """Audience on one platform, or None when it hasn't been measured.
+
+        None and zero are different answers: zero is a reading, None is the
+        absence of one, and the creators page shows them differently.
+        """
+        counts = [
+            h.follower_count for h in self.handles_on(platform)
+            if h.follower_count is not None
+        ]
+        return max(counts) if counts else None
 
     @property
     def delivered_count(self):
@@ -332,10 +364,82 @@ class SocialHandle(db.Model):
     profile_url = db.Column(db.String(512))
 
     creator = db.relationship("Creator", back_populates="handles")
+    snapshots = db.relationship(
+        "FollowerSnapshot", back_populates="handle",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
 
     @property
     def platform_label(self):
         return PLATFORM_LABELS.get(self.platform, self.platform)
+
+    @property
+    def latest_snapshot(self):
+        """The most recent check of this handle, whatever it found."""
+        if not self.snapshots:
+            return None
+        return max(self.snapshots, key=lambda s: (s.measured_at or date.min, s.id or 0))
+
+    @property
+    def followers_checked_on(self):
+        latest = self.latest_snapshot
+        return latest.measured_at if latest else None
+
+    @property
+    def is_unresolved(self):
+        """True when the last check could not find the account at all."""
+        latest = self.latest_snapshot
+        return latest is not None and latest.status == "not_found"
+
+
+class FollowerSnapshot(db.Model):
+    """One reading of a handle's audience, and where the number came from.
+
+    `SocialHandle.follower_count` keeps the latest good value, because that is
+    what every page wants. This keeps the readings behind it: when it was
+    checked, by what, and what it said. Without that a follower count is just
+    a number somebody typed once — there is no way to tell a figure confirmed
+    last week from one copied out of a spreadsheet a year ago, and no way to
+    see an audience grow.
+
+    A check that finds no such account is recorded too (`status="not_found"`,
+    no count), rather than leaving the handle looking merely unmeasured.
+    """
+
+    __tablename__ = "follower_snapshots"
+
+    id = db.Column(db.Integer, primary_key=True)
+    social_handle_id = db.Column(
+        db.Integer, db.ForeignKey("social_handles.id"), nullable=False
+    )
+    follower_count = db.Column(db.Integer)
+    status = db.Column(db.String(16), nullable=False, default="ok")  # ok | not_found
+    measured_at = db.Column(db.Date, default=date.today)
+    source = db.Column(db.String(120))
+
+    handle = db.relationship("SocialHandle", back_populates="snapshots")
+
+
+class CreatorGroup:
+    """One person's content in one campaign, with their referrals for it."""
+
+    def __init__(self, creator, pieces, referrals):
+        self.creator = creator
+        self.pieces = pieces              # newest first
+        self.referrals = referrals        # None = campaign not measured
+
+    @property
+    def latest(self):
+        return self.pieces[0].posted_on if self.pieces else None
+
+    @property
+    def platforms(self):
+        seen = []
+        for piece in self.pieces:
+            for post in piece.posts:
+                if post.platform_label not in seen:
+                    seen.append(post.platform_label)
+        return seen
 
 
 class Campaign(db.Model):
@@ -433,9 +537,54 @@ class Campaign(db.Model):
         return f"{start:%b %-d} – {end:%b %-d, %Y}"
 
     @property
+    def referrals_still_counting(self):
+        """True when the totals were counted before the campaign ended.
+
+        A running campaign's referral number is a figure to date, and has to
+        say so — otherwise it reads as the campaign's final result.
+        """
+        window = self.referral_window
+        return bool(window and self.ends_on and window[1] < self.ends_on)
+
+    @property
     def credited_count(self):
         """How many creators have a referral number for this campaign."""
         return sum(1 for r in self.referral_totals if r.referrals)
+
+    def referrals_for(self, creator):
+        """One creator's referrals for this campaign — their own, not a piece's.
+
+        Zero when the campaign was measured and they earned none; None when it
+        has no measurement at all, so a blank never reads as a zero. Without
+        per-creator totals this falls back to snapshots on pieces they made.
+        """
+        if self.referral_totals:
+            return next(
+                (r.referrals for r in self.referral_totals
+                 if r.creator_id == creator.id), 0)
+        mine = [p for p in self.ugc if creator in p.creators and p.referral_snapshots]
+        return sum(p.referrals for p in mine) if mine else None
+
+    def pieces_by(self, creator):
+        """What this creator made in this campaign, lead or collaborator, newest first."""
+        mine = [p for p in self.ugc if creator in p.creators]
+        return sorted(mine, key=lambda p: (p.posted_on or date.min, p.id), reverse=True)
+
+    @property
+    def creator_groups(self):
+        """The campaign's content, one group per person who made some.
+
+        A piece two people made sits in both groups — each of them made it —
+        while campaign totals still count it once, from `ugc`.
+        """
+        makers = {}
+        for piece in self.ugc:
+            for person in piece.creators:
+                makers.setdefault(person.id, person)
+        return [
+            CreatorGroup(person, self.pieces_by(person), self.referrals_for(person))
+            for person in makers.values()
+        ]
 
     @property
     def total_engagement(self):
@@ -610,6 +759,11 @@ class UgcPiece(db.Model):
         )
 
     @property
+    def platform_summary(self):
+        """Where it ran, e.g. "Instagram + TikTok" — shown beside the title."""
+        return " + ".join(sorted({p.platform_label for p in self.posts})) or "No link"
+
+    @property
     def display_title(self):
         """What to show when the piece has no title.
 
@@ -676,6 +830,31 @@ class UgcPiece(db.Model):
         if not self.posted_on:
             return False
         return date.today() >= self.posted_on + timedelta(days=REFERRAL_WINDOW_DAYS)
+
+    @property
+    def creator_referrals(self):
+        """Referrals credited to the people who made this, for its campaign.
+
+        This is not the video's own number, and nothing here can produce one:
+        the source counts invite-code redemptions per account, so a creator
+        with three videos in a campaign has one figure for all three, and a
+        creator with none still has theirs. What a video page can honestly
+        show is that figure, labelled as the creator's.
+
+        For a piece made by several people it is their combined figure. Zero
+        when the campaign was measured and they earned none; None when the
+        campaign has no measurement at all (falling back to any per-piece
+        snapshot that predates per-creator totals).
+        """
+        campaign = self.campaign
+        if campaign is None:
+            return None
+        if not campaign.referral_totals:
+            return self.referrals if self.referral_snapshots else None
+        ids = {c.id for c in self.creators}
+        return sum(
+            r.referrals for r in campaign.referral_totals if r.creator_id in ids
+        )
 
     @property
     def engagement_rate(self):

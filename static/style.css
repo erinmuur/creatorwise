@@ -222,7 +222,19 @@ main { max-width: 1120px; margin: 0 auto; padding: var(--space-32) var(--space-1
   color: var(--text-primary);
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
 }
+.ugc-thumb.has-media { padding: 0; background: #000; }
+.ugc-thumb-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .ugc-title { font-size: 14px; font-weight: 600; margin: 0; }
+/* Campaign page: one card per creator. The count sits on the thumbnail so a
+   creator with nine pieces doesn't look like one with a single post. */
+.creator-card .ugc-title.who { gap: var(--space-8); }
+.ugc-thumb-empty { margin: auto; font-size: 12px; color: var(--text-tertiary); }
+.ugc-count {
+  position: absolute; right: var(--space-8); bottom: var(--space-8);
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7); color: #fff;
+  font-size: 11px; font-weight: 600; line-height: 18px;
+}
 .ugc-creator { font-size: 12px; color: var(--text-secondary); margin: 2px 0 var(--space-8); }
 .ugc-stats { display: flex; gap: var(--space-12); font-size: 12px; color: var(--text-secondary); }
 .ugc-stats b { color: var(--text-primary); font-weight: 600; }
@@ -241,6 +253,7 @@ tbody tr + tr td { border-top: 1px solid var(--border-subtle); }
 tbody tr:hover td { background: var(--surface-tertiary); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .row-name { font-weight: 600; }
+.muted { color: var(--text-tertiary); }
 
 /* ---------- avatars ---------- */
 
@@ -297,6 +310,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .badge-provisional { background: var(--surface-tertiary);  color: var(--text-tertiary); }
 
 /* ---------- sort controls ---------- */
+
+.searchbar { margin-bottom: var(--space-12); }
+.search-field { width: 100%; max-width: 420px; }
+tr[hidden] { display: none; }
 
 .sortbar { display: flex; align-items: center; gap: var(--space-8); flex-wrap: wrap; margin-bottom: var(--space-16); }
 .sortbar-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); }
@@ -373,3 +390,21 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   color: var(--text-primary);
 }
 .field:focus { outline: none; border-color: var(--interactive); }
+
+/* ---------- saved media ---------- */
+
+.media-video {
+  display: block; width: 100%; max-height: 70vh;
+  border-radius: 12px; background: #000;
+}
+.media-gallery {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-8);
+}
+.media-gallery img {
+  display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover;
+  border-radius: 8px; background: var(--surface-tertiary);
+}
+.transcript {
+  white-space: pre-wrap; font-size: 14px; line-height: 22px;
+  max-height: 420px; overflow-y: auto; color: var(--text-primary);
+}

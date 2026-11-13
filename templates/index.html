@@ -61,7 +61,7 @@
       <thead>
         <tr>
           <th>Top videos</th>
-          <th class="num">Referrals</th>
+          <th class="num" title="A video has no referral count of its own: this is its creator's figure for the campaign">Creator referrals</th>
           <th class="num">Engagement</th>
         </tr>
       </thead>
@@ -70,9 +70,9 @@
         <tr>
           <td>
             <div class="row-name"><a href="{{ url_for('ugc_detail', piece_id=p.id) }}">{{ p.display_title }}</a></div>
-            <div class="row-sub">{{ p.byline }} · {{ p.campaign.name }}</div>
+            <div class="row-sub">{{ p.byline }} · {{ p.platform_summary }} · {{ p.campaign.name }}</div>
           </td>
-          <td class="num">{{ p.referrals | thousands }}</td>
+          <td class="num">{{ p.creator_referrals | thousands }}</td>
           <td class="num">{{ p.engagement | compact }}</td>
         </tr>
         {% else %}

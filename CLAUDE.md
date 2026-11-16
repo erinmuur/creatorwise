@@ -565,6 +565,10 @@ and only names the piece actually has are served.
   but TikTok's profile grid starts answering "Something went wrong" after a
   few profiles in quick succession; stop rather than push, since it is
   Erin's account. Saving off: 084, 087, 089, 095, 106, 121, 128, 159.
+  On 2026-11-16 153's TikTok (same day, same "what I read this week" +
+  leaderboard caption) was added as its cross-post; saving is off on it
+  too, and Instagram had signed Erin out, so its length is unchecked and
+  153 still has no media.
   Two duplicates merged the same day (Erin's yes), leaving 107 pieces with
   49 holding media: 174 was 123's TikTok again under its full URL (123 had a
   short link), so 123's link was rewritten to the full form — keep it that
@@ -625,6 +629,12 @@ and only names the piece actually has are served.
   carousel. A TikTok the sheet put on a Wave 2 creator's softlaunch row was
   posted 2026-10-24 (from its id), after the softlaunch ended, and is the
   same post as her announcement piece; the softlaunch copy was removed.
+  On 2026-11-13 Erin decided it counts for the softlaunch after all: piece
+  093 was moved there (not copied — one piece, one campaign) and her
+  softlaunch status went from `wave_2` to `content_delivered`. She stays
+  delivered in the announcement through her other piece (157). So the
+  softlaunch holds one piece dated after its end, on Erin's call — don't
+  "fix" it back. Softlaunch: 47 pieces, 43 delivered; announcement: 109.
 - Softlaunch carousels, 2026-11-11: 10 of 12 loaded from screenshots
   (the 10 Instagram ones, 71 slides), read with Vision and titled from
   their first slide (one cover slide is in a script font Vision missed, so
@@ -632,7 +642,10 @@ and only names the piece actually has are served.
   Erin's own screenshots (piece 47: 4 of 5 slides — slide 4 deliberately
   skipped; piece 63: 9), with the creators' captions added to the transcript
   and TikTok's overlay lines (name, caption preview, sound) stripped. All 46
-  softlaunch pieces now have media.
+  softlaunch pieces now have media. On 2026-11-13 Erin supplied 47's full
+  set of 5 slides and a hand transcript, which replaced the OCR (mostly
+  book-spine noise); 46's Whisper transcript had the book's title misheard
+  and was corrected from her notes.
 - Carousels, 2026-11-11: every folder now names its slide count, read from
   the post page — 12 softlaunch, 13 announcement (whose 44 other posts are
   videos, one an expired story). TikTok photo pages only expose their count

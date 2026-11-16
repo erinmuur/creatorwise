@@ -273,6 +273,32 @@ class VideoReferralDisplayTests(unittest.TestCase):
         self.assertIn("1,234", html)
         self.assertIn("for the creator, not per piece", html)
 
+    def test_a_profiles_campaign_row_opens_that_creators_content(self):
+        """Several pieces: their content for the campaign. One: the piece
+        itself. None: the campaign page, as there is nothing of theirs."""
+        from datetime import date
+
+        from models import Campaign, Creator, Participation, UgcPiece, db
+        with appmod.app.app_context():
+            bea = Creator.query.filter_by(email="bea@example.com").one()
+            solo = Campaign(name="Solo Run", slug="solo-run", starts_on=date(2026, 1, 1))
+            quiet = Campaign(name="Quiet One", slug="quiet-one", starts_on=date(2025, 1, 1))
+            db.session.add_all([solo, quiet])
+            db.session.flush()
+            db.session.add_all([
+                Participation(creator_id=bea.id, campaign_id=solo.id, status="content_delivered"),
+                Participation(creator_id=bea.id, campaign_id=quiet.id, status="opted_in"),
+            ])
+            piece = UgcPiece(creator_id=bea.id, campaign_id=solo.id)
+            db.session.add(piece)
+            db.session.commit()
+            bea_id, piece_id = bea.id, piece.id
+        html = self.client.get(f"/creators/{bea_id}").get_data(as_text=True)
+        self.assertIn(f'href="/campaigns/spring-pilot/creators/{bea_id}">Spring Pilot</a>', html)
+        self.assertIn(f'href="/ugc/{piece_id}">Solo Run</a>', html)
+        self.assertIn('href="/campaigns/quiet-one">Quiet One</a>', html)
+        self.assertIn('href="/campaigns/spring-pilot">Campaign page</a>', html)
+
     def test_a_shared_piece_is_under_both_makers_and_counted_once(self):
         from datetime import date
 

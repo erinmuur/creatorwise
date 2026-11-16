@@ -57,10 +57,21 @@
           </thead>
           <tbody>
             {% for p in participations %}
+            {%- set mine = p.pieces -%}
+            {%- if mine | length == 1 -%}
+              {%- set content_url = url_for('ugc_detail', piece_id=mine[0].id) -%}
+            {%- elif mine -%}
+              {%- set content_url = url_for('campaign_creator', slug=p.campaign.slug, creator_id=creator.id) -%}
+            {%- else -%}
+              {%- set content_url = url_for('campaign_detail', slug=p.campaign.slug) -%}
+            {%- endif %}
             <tr>
               <td>
-                <div class="row-name"><a href="{{ url_for('campaign_detail', slug=p.campaign.slug) }}">{{ p.campaign.name }}</a></div>
-                {% if p.opted_in_on %}<div class="row-sub">Opted in {{ p.opted_in_on | shortdate }}</div>{% endif %}
+                <div class="row-name"><a href="{{ content_url }}">{{ p.campaign.name }}</a></div>
+                <div class="row-sub">
+                  {%- if p.opted_in_on %}Opted in {{ p.opted_in_on | shortdate }}{% if mine %} · {% endif %}{% endif -%}
+                  {%- if mine %}<a href="{{ url_for('campaign_detail', slug=p.campaign.slug) }}">Campaign page</a>{% endif -%}
+                </div>
               </td>
               <td><span class="badge badge-{{ p.status }}">{{ p.status_label }}</span></td>
               <td class="num">{{ p.pieces | length }}</td>

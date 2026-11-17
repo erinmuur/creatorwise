@@ -7,7 +7,7 @@
   <p class="eyebrow"><a href="{{ url_for('campaigns') }}">Campaigns</a></p>
   <h1 class="page-title">{{ campaign.name }}</h1>
   <p class="page-sub">
-    {% if campaign.starts_on or campaign.ends_on %}{{ campaign.starts_on | shortdate }} – {{ campaign.ends_on | shortdate }}{% else %}Dates not set{% endif %}
+    {% if campaign.starts_on or campaign.ends_on %}{{ campaign.starts_on | shortdate }} – {{ (campaign.ends_on | shortdate) if campaign.ends_on else "ongoing" }}{% else %}Dates not set{% endif %}
     · <span class="badge badge-{{ campaign.status }}">{{ campaign.status | capitalize }}</span>
   </p>
 </div>

@@ -541,10 +541,11 @@ class Campaign(db.Model):
         """True when the totals were counted before the campaign ended.
 
         A running campaign's referral number is a figure to date, and has to
-        say so — otherwise it reads as the campaign's final result.
+        say so — otherwise it reads as the campaign's final result. A campaign
+        with no end date never finishes, so its figure is always to date.
         """
         window = self.referral_window
-        return bool(window and self.ends_on and window[1] < self.ends_on)
+        return bool(window and (self.ends_on is None or window[1] < self.ends_on))
 
     @property
     def credited_count(self):

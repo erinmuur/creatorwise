@@ -33,6 +33,7 @@
         {%- set how = ((stored.source or {}).get("transcript") or {}).get("how", "") -%}
         {% if "by hand" in how %}Transcribed by hand from the on-screen text.
         {%- elif "TikTok" in how and "captions" in how %}From TikTok's auto-generated captions — may contain small mishearings.
+        {%- elif "YouTube" in how and "captions" in how %}From the creator's own captions on YouTube.
         {%- else %}{% if stored.video %}Machine transcript (Whisper, run locally){% else %}Text read off the slides{% endif %} — names and titles may be wrong.{% endif %}
         <a href="{{ url_for('ugc_media', piece_id=piece.id, name='transcript.txt', download=1) }}">Download .txt</a>
       </p>

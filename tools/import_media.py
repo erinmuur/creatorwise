@@ -160,8 +160,13 @@ def same_video(piece, seconds, pieces, store, claimed):
     return None
 
 
-def plan(campaign, root, store):
-    """What importing would do, per piece. Touches nothing."""
+def plan(campaign, root, store, checked=()):
+    """What importing would do, per piece. Touches nothing.
+
+    `checked` names pieces a person has looked at and found to be a different
+    video from any same-length one by the same creator (two reels can share a
+    length to the hundredth). Only those skip the posted-twice check.
+    """
     base = os.path.join(root, campaign.slug)
     pieces = {p.id: p for p in campaign.ugc}
     claimed = {}   # piece id -> length of the video this run would store
@@ -197,8 +202,9 @@ def plan(campaign, root, store):
             continue
         if videos:
             seconds = duration(videos[0])
-            twin = seconds and same_video(pieces[piece_id], seconds, pieces,
-                                          store, claimed)
+            twin = (seconds and piece_id not in checked
+                    and same_video(pieces[piece_id], seconds, pieces,
+                                   store, claimed))
             if twin:
                 result["problems"].append((
                     folder, f"same length ({seconds:.0f}s) as piece {twin.id} by "
@@ -327,6 +333,11 @@ def main(argv=None):
     parser.add_argument("--prepare", action="store_true",
                         help="make the drop folders and stop")
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--not-a-twin", type=int, action="append", default=[],
+                        metavar="PIECE",
+                        help="import this piece's video even though another of "
+                             "the creator's videos is the same length — only "
+                             "after checking by eye/ear that it is different")
     args = parser.parse_args(argv)
 
     from app import app
@@ -345,7 +356,7 @@ def main(argv=None):
                   f"({made} new)")
             return 0
 
-        result = plan(campaign, root, store)
+        result = plan(campaign, root, store, checked=set(args.not_a_twin))
         print(render(campaign, result))
         if not args.apply:
             print("\n(dry run — nothing written. Re-run with --apply.)")

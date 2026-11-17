@@ -25,6 +25,7 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `models.py` | SQLAlchemy models (`db` lives here) |
 | `tools/backfill_emails.py` | one-off: mirror primaries into `creator_emails` |
 | `tools/refresh_referrals.py` | load per-creator referral counts for a campaign |
+| `tools/refresh_all_referrals.py` | every campaign at once: write the query, load its checked result (the daily job) |
 | `avatars.py` | profile photos on disk under `data/avatars/` |
 | `tools/fetch_avatars.py` | download profile photos from Readwise Books profiles |
 | `media.py` | saved videos / carousel slides / transcripts under `data/media/` |
@@ -182,8 +183,8 @@ Readwise Books Announcement, from the October outreach sheet on 2026-11-09:
 202 participants — 5 not contacted, 57 contacted, 94 opted in, 42 delivered,
 4 declined — with 57 pieces from 79 links. Referrals were 1,700 across 81
 creators counted Oct 28 – Nov 9 2026, then 1,758 when refreshed through
-Nov 10 (the campaign runs Oct 28 – Dec 1 2026, so the window is to date and
-must be refreshed after it closes). **41 of those creators earned referrals
+Nov 10, then 2,188 across 89 through Nov 16, then 2,214 through Nov 17 (the campaign runs Oct 28 – Dec 1 2026; the
+daily refresh counts it to date and stops at Dec 1 on its own). **41 of those creators earned referrals
 without posting any content** (643 between them), which is why referrals are
 not stored per piece.
 
@@ -220,6 +221,26 @@ Campaign dates (from Erin, 2026-11-10): Stickers Beta Oct 1 2025 – Mar 31
 (`active` until then). Referral windows match them. Only participants are
 credited: in the softlaunch window, 35 redemptions came from people who were
 in the announcement but not the softlaunch, and they are skipped, not counted.
+
+**Organic Plugs** (`organic-plugs`, created 2026-11-16) is for creators who
+post about the app unprompted. It runs from Oct 28 2026 with no end date
+(Erin, 2026-11-16) and reads "ongoing"; with no end, its referral total
+always says "(so far)". Referrals through Nov 17: 211, nearly all from
+one creator (307). Its first
+creator (306) was found by her Readwise Books username, at Erin's request:
+Erin's contextone query to the Readwise production database
+(`bookwise_bookwiseprofile.username` → `main_profile` → `auth_user.email`)
+gave the address, which Erin confirmed. The username is kept in the creator's
+notes. That was a one-off lookup by Erin's tooling — creatorwise itself still has no
+production access. Her two TikToks (194, 195) came via TikTok's own
+Download; Whisper wrote the background song into 194's transcript and those
+lines were removed. On 2026-11-16 every campaign was re-counted in one
+query over all four windows (Erin's contextone access, limited to addresses on
+file); the Stickers Beta stayed 0 and the softlaunch stayed 581 exactly.
+Creator 307's video (196) came as a file from Erin
+("volunteer UGC"), with her Whisper transcript; so did creator 308's
+reel (197). 308's surname spelling matches his email address (confirmed
+by Erin, 2026-11-16). Creator 309's reel (198) came the same way, and so did creator 310's (199).
 
 Still absent: engagement numbers for every piece, payment terms, and all
 payment details.
@@ -368,6 +389,27 @@ per-piece measurement if attribution ever gets that precise.
 - **creatorwise has no production DB access and should not get any.** The
   counts arrive as a JSON file `{email: count}` produced by somebody who can
   query it; `tools/refresh_referrals.py` has the exact SQL in its docstring.
+- **Referrals refresh daily, outside the app** (Erin asked, 2026-11-17). A
+  Claude desktop scheduled task on Erin's Mac, `creatorwise-referrals`
+  (07:00, prompt in `~/.claude/scheduled-tasks/creatorwise-referrals/`), runs
+  `tools/refresh_all_referrals.py --sql`, runs that query with Erin's
+  contextone `query_readwise`, saves the result and loads it with `--load
+  --apply`. The app itself still has no production access — that is why this
+  isn't a thread in the web process like the mail scanner. It only runs while
+  the desktop app is open (a missed run happens on next launch), and it
+  refreshes the **local** database, which is where the real data lives.
+- Every campaign is counted over its own window: `starts_on` to `ends_on`,
+  or to today while running; no end date means always to today. A campaign
+  with no `starts_on` is skipped and reported.
+- The result is copied out of the query tool by a model, so it carries a
+  checksum: the query adds a ROLLUP total row, and `--load` refuses a file
+  whose rows don't sum to it, whose row count is off, or that names an
+  address the query didn't ask about. A refused file is fetched again, never
+  patched by hand. Columns are named `c<id>_<from>_<to>`, so a file states
+  its own windows.
+- `--apply` overwrites `data/creatorwise.db.bak-referrals` first and appends
+  a line of per-campaign totals to `data/referral-refreshes.log` — check that
+  log, not the scheduler's status, to see whether runs are happening.
 - A creator missing from a later file drops to zero rather than keeping a
   stale number that looks current.
 - **A video shows its creator's figure for the campaign, labelled as such**
@@ -569,6 +611,26 @@ and only names the piece actually has are served.
   leaderboard caption) was added as its cross-post; saving is off on it
   too, and Instagram had signed Erin out, so its length is unchecked and
   153 still has no media.
+  Erin's folder of 2026-11-16: 14 Instagram posts with files and her
+  transcripts. Four (131, 179, 180, 181) matched videos already stored, to
+  0.03s, and were left alone. Three filled pieces that had no media (136,
+  152, 162). Seven were new posts, added as 183–189 with
+  `discovered_via="manual"`; that made three creators `content_delivered`
+  (two had only opted in and one was `contacted`; on Erin's word). Her
+  Whisper transcripts were used with the mishearings her notes name
+  corrected; lyrics and a lip-synced clip were left out, as before. 186 is
+  0.2s off 98 by the same creator but is a different video (different
+  speech); the importer now flags 098's folder as a twin of 186 on every
+  run (58.2s vs 58.33s once stored) — a false alarm, 098 is just skipped.
+  The 4-minute readathon by the creator of 176 arrived with its TikTok
+  link afterwards and is 190 (a different video from 176). Announcement:
+  117 pieces, 75 delivered, 62 with media. Three more the same day: 191
+  (a cross-post; its TikTok is dated four days before the reel, both links
+  from Erin; it made that creator `content_delivered`), 192, and 193 —
+  a video Erin first sent under 192's creator and then refiled under
+  193's. 193's Instagram link came separately (Erin had first sent only
+  the creator's profile). Announcement: 120 pieces, 76
+  delivered, 65 with media.
   Two duplicates merged the same day (Erin's yes), leaving 107 pieces with
   49 holding media: 174 was 123's TikTok again under its full URL (123 had a
   short link), so 123's link was rewritten to the full form — keep it that
@@ -590,6 +652,64 @@ and only names the piece actually has are served.
   hidden temp file when finished; moving the temp file before that rename
   left 0-byte files and made the pane ask Erin to replace. Wait for the
   rename, and start no download while a `Download*.mp4` is in ~/Downloads.
+- Announcement carousels, 2026-11-17 (Erin's go-ahead): 15 Instagram
+  photo/carousel posts captured from screenshots, 130 slides — 132, 137,
+  140, 143, 151, 154, 155, 156, 158, 161, 163, 165, 166, 177, 178. 80 of
+  120 now have media. 141, 142 and 144 looked like posts but are single
+  videos, so they still need files. Method, quicker than the old 2–3 shots
+  per slide: emulate the pane at 720×1120 (screenshots come back 800×1244,
+  ×1.111), open the plain `/p/<code>/` link (the `/<user>/p/` form renders
+  smaller), read the slide's on-page rectangle and scroll it to sit just
+  below the fixed header (y=45), take one screenshot per slide and crop
+  that rectangle. Script reads only layout (and pauses a video slide on its
+  first frame); the page's own Next arrow steps the slides. Let the page
+  settle before positioning slide 1 — it shifted once. 4:5 posts render
+  720 wide; 3:4 posts render 470 wide (slides ~522px). Titles and hooks
+  were set by hand from each cover slide, OCR misreads fixed; 143 (a
+  talking-head video cover) and 166 (a family photo dump with no text)
+  keep the platform label.
+- TikTok photo posts, same day, signed in as Erin (she allowed tiktok.com
+  in the pane): 103, 116, 122, 147 captured. Emulate 800×1200 (screenshots
+  ~1:1); the slideshow auto-advances, so click the photo once to pause,
+  then hover the player before clicking its own arrow buttons (they ignore
+  a click without hover) and move the mouse off before each shot. Slides
+  are `object-fit: contain`, so crop the contained rectangle computed from
+  the img's natural size. TikTok's name/caption/dots overlay stays on the
+  image, as in Erin's own screenshots; those lines are stripped from the
+  OCR transcript. 122 was imported. The other three were cross-posts of
+  Instagram carousels already loaded — 116 the same 9 slides as 118, 103
+  the same photos as 102 (one fewer slide, reordered), 147 the same 9 stat
+  cards as 143 (photo cover instead of video) — and were merged into them
+  on Erin's yes: the TikTok post moved onto the Instagram piece (links
+  kept exactly as the sheet has them, shortlinks included, so a re-import
+  matches them), the empty piece deleted, the Instagram slides kept, and
+  the date taken from the TikTok id. Announcement: 117 pieces, 81 with
+  media.
+- Erin's folder of 2026-11-17, the evening: 34 videos (the reels and
+  saving-off TikToks) with her transcripts, each naming its post's URL, so
+  files were matched by URL, not name. Eight more cross-posts surfaced and
+  were merged into the piece holding the video, as above: 097 into 098
+  (same speech, 58.3s vs 58.2s), 089 into 088 (her file says same video),
+  and six Instagram reels the importer's length guard caught against
+  stored TikToks — 100→101, 104→105, 119→115, 120→117, 141→145, 144→149,
+  each confirmed by identical speech or on-screen text. One of her
+  files was 186's post, already stored, so skipped. 168 and 167 are
+  different videos that happen to share a length to the millisecond
+  (different songs, different files), so `import_media.py` gained
+  `--not-a-twin PIECE`: it lets a named piece past the guard once a person
+  has checked, and only that piece. 26 videos imported. Transcripts: her
+  Whisper text for 15 speech videos (how: "Whisper transcript supplied by
+  Erin"), her on-screen descriptions for 8 music-only ones ("on-screen
+  text, transcribed by hand"); 108 had a song in the middle of its speech,
+  cut to "[music]". One creator's three (111, 167, 168) were lyrics only, so
+  they carry Vision OCR of their on-screen text instead, and the lyric
+  hooks the tool filled were cleared. 086 (a 22-minute YouTube review)
+  came as a transcript only — YouTube wouldn't let her save it — from the
+  creator's own captions; it is stored without a video and the page says
+  "From the creator's own captions on YouTube". Titles quote each
+  transcript; hooks are the first spoken line, speech only. Announcement:
+  109 pieces, 107 with media — only 086 (no video) and 099 (expired story)
+  have none.
 - Stickers Beta, 2026-11-11: 13 of 21 have video, all via TikTok's own
   Download, transcribed and titled (one, a music video over a stats
   screen, keeps its platform label). Four of the 13 are music over
@@ -652,9 +772,9 @@ and only names the piece actually has are served.
   when opened as `/video/<id>`, which redirects. Two pairs on the
   announcement may be one carousel cross-posted (same creator, same or
   near count): compare the slides before keeping both — 102 against 103,
-  118 against 116. The Instagram halves are loaded; the TikTok halves need
-  Erin's screenshots, so the comparison is still open. The importer's
-  duplicate guard only checks videos.
+  118 against 116. Settled 2026-11-17: both were cross-posts (so was
+  143/147) and are merged. The importer's duplicate guard only checks
+  videos.
 
 ## The mail scanner
 

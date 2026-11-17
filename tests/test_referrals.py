@@ -208,6 +208,12 @@ class ReferralTotalTests(unittest.TestCase):
         self.campaign.ends_on = WINDOW[1]
         self.assertFalse(self.campaign.referrals_still_counting)
 
+    def test_an_ongoing_campaign_is_always_so_far(self):
+        """No end date means it never closes, so no count is final."""
+        self.credit("Bea Lune", 63)
+        self.campaign.ends_on = None
+        self.assertTrue(self.campaign.referrals_still_counting)
+
 
 class RefreshToolTests(unittest.TestCase):
     def setUp(self):

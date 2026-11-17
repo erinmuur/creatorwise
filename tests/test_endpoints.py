@@ -273,6 +273,17 @@ class VideoReferralDisplayTests(unittest.TestCase):
         self.assertIn("1,234", html)
         self.assertIn("for the creator, not per piece", html)
 
+    def test_a_campaign_with_no_end_date_reads_ongoing(self):
+        from models import Campaign, db
+        with appmod.app.app_context():
+            camp = Campaign.query.filter_by(slug="spring-pilot").one()
+            camp.ends_on = None
+            db.session.commit()
+        for url in ("/campaigns/spring-pilot", "/campaigns", "/"):
+            html = self.client.get(url).get_data(as_text=True)
+            self.assertIn("Oct 28, 2026 – ongoing", html, url)
+            self.assertNotIn("– —", html, url)
+
     def test_a_profiles_campaign_row_opens_that_creators_content(self):
         """Several pieces: their content for the campaign. One: the piece
         itself. None: the campaign page, as there is nothing of theirs."""

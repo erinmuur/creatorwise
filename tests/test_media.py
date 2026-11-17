@@ -210,6 +210,14 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(len(result["import"]), 1)
         self.assertIn("probably one video posted twice", result["problems"][0][1])
 
+        # Two different videos can share a length; once a person has checked,
+        # the piece they name goes through — and only that one.
+        held = int(result["problems"][0][0].split()[0])
+        checked = import_media.plan(self.campaign, self.inbox, self.store,
+                                    checked={held})
+        self.assertEqual(len(checked["import"]), 2)
+        self.assertEqual(checked["problems"], [])
+
     @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
     def test_a_video_is_stored_as_mp4_with_a_poster(self):
         source = os.path.join(self.root, "clip.mov")

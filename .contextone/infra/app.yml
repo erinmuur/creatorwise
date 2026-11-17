@@ -24,6 +24,9 @@ services:
       # Bearer token for /api/ingest and /api/scan. Without it both endpoints
       # return 503 and accept nothing.
       INGEST_TOKEN: "${ENV.INGEST_TOKEN}"
+      # Bearer token for /api/data/* — tools/push_data.py uploads the database,
+      # media and photos with it. Without it those endpoints return 503.
+      SYNC_TOKEN: "${ENV.SYNC_TOKEN}"
       # Gmail scanner credentials. Blank until the OAuth client exists, which
       # leaves the scanner dormant rather than failing. See docs/gmail-setup.md.
       GMAIL_CLIENT_ID: "${ENV.GMAIL_CLIENT_ID}"

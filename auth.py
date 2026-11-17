@@ -17,6 +17,8 @@ from functools import wraps
 
 from flask import redirect, render_template, request, session, url_for
 
+import datasync
+
 SESSION_KEY = "authed"
 
 # Reachable without a session. Everything here either has no secrets to leak or
@@ -29,7 +31,7 @@ PUBLIC_ENDPOINTS = {
     "api_scan",        # bearer-token auth
     "api_gmail_check", # bearer-token auth
     "static",
-}
+} | datasync.ENDPOINTS  # SYNC_TOKEN bearer auth, checked in datasync.py
 
 
 def password():

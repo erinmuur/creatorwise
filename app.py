@@ -24,6 +24,7 @@ from models import (
 import inbox as inbox_lib
 import auth
 import avatars
+import datasync
 import media
 import gmail
 import scan as scan_lib
@@ -48,6 +49,9 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 auth.configure(app)
 auth.login_view(app)
 auth.install(app)
+
+# Token-authed upload of data/ from the machine that holds it (datasync.py).
+app.register_blueprint(datasync.bp)
 
 db.init_app(app)
 with app.app_context():

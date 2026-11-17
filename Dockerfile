@@ -14,4 +14,4 @@ RUN python -c "import app; print('app loaded ok')"
 # Persistent data directory (mounted by Contextone)
 RUN mkdir -p /app/data
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--access-logfile", "-", "app:app"]

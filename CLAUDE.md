@@ -74,48 +74,34 @@ These have bitten this setup before:
 4. **Never destroy a deployed instance** to fix it — the SQLite volume and SSL certs
    are lost, and repeated recreates hit Let's Encrypt rate limits. Redeploy in place.
 
-5. **TLS is broken on this subdomain, and the site is therefore unreachable in a
-   browser.** `https://creatorwise.infra.contextone.dev` serves a certificate for
-   an unrelated app (`CN=cx-emails-agent.app.contextone.dev`, issued Sep 5), so
-   HTTPS fails verification.
+5. **TLS: fixed on 2026-11-18, after a platform outage.** From Sep 2026 the
+   platform issued no certificates, and every creatorwise address served an
+   unrelated app's (`CN=cx-emails-agent.app.contextone.dev`), so no browser
+   could open the dashboard. `http://` was never a workaround: all of `.dev` is
+   HSTS-preloaded, so browsers upgrade it to https before sending anything.
 
-   **`http://` is NOT a workaround.** The whole `.dev` TLD is on the HSTS preload
-   list baked into every major browser, so `http://` on any `*.dev` host is
-   upgraded to HTTPS before the request leaves the machine — you get
-   `ERR_CERT_COMMON_NAME_INVALID`, not the app. Confirmed against
-   `hstspreload.org/api/v2/status?domain=dev` → `"status": "preloaded"`, and by
-   loading it in a real browser. (An earlier note here said to use `http://`
-   meanwhile; that was wrong, and only ever true for `curl`, which ignores HSTS.)
+   The cause, found 2026-11-17: `dokku letsencrypt:enable` solves DNS-01
+   through Cloudflare, and the platform's Cloudflare token had lost access to
+   the contextone.dev zone (contextone ticket #26). `contextone infra deploy`
+   hides that step's failure; `contextone compute up` (the deployment preset,
+   `.contextone/creatorwise.yml`, compute id 131) is what reported it.
 
-   So: `curl` and the `/api/*` endpoints work fine over `http://`. A human with a
-   browser cannot open the dashboard at all until a certificate exists.
+   Issuance resumed on 2026-11-18, and an in-place redeploy of instance 454
+   gave `creatorwise.infra.contextone.dev` its own certificate within a
+   minute. http now redirects to https. If a certificate is ever wrong again,
+   check whether the platform is issuing at all (crt.sh,
+   `%.infra.contextone.dev`) before redeploying, and try `compute up` to see
+   the error.
 
-   Four deploys and a restart across 2026-11-05 → 11-09 produced no new cert.
-   **It is not this subdomain — the platform has stopped issuing.** On
-   2026-11-17 a deploy to a fresh subdomain, `creatorwise-app` (instance 455),
-   came up with the same wrong certificate. Certificate Transparency logs
-   (crt.sh, `%.infra.contextone.dev`) show no certificate issued for *any*
-   `*.infra.contextone.dev` name since 2026-09-13; `spark` works only because
-   its cert dates from 2026-09-05. Those Sep 5 certs, spark's included, expire
-   2026-12-04 and have not been renewed. So a new subdomain does not help, and
-   neither does the earlier "rate limiting" theory; this needs contextone to
-   fix ACME issuance. The CLI has no cert or custom-domain command.
+   Do NOT `destroy` the instance to fix a certificate — it loses the volume and
+   risks rate-limiting the subdomain for days.
 
-   **Root cause, found 2026-11-17:** `contextone infra deploy` hides the
-   certificate step's failure, but `contextone compute up` (the deployment
-   preset, `.contextone/creatorwise.yml`, compute id 131) reports it.
-   `dokku letsencrypt:enable` solves DNS-01 through Cloudflare, and fails
-   with `cloudflare: failed to find zone contextone.dev.: zone could not be
-   found` — the platform's Cloudflare API token no longer has access to the
-   contextone.dev zone. Only a contextone admin can fix that (contextone
-   ticket #26). Every redeploy until then is wasted.
-
-   For local work, just run the app on localhost — no TLS involved:
+   For local work, run the app on localhost — no TLS involved:
    ```
    ./venv/bin/python app.py    # http://localhost:5000
    ```
-   Do NOT `destroy` the instance to fix this — it loses the volume and risks
-   rate-limiting the subdomain for days.
+   On macOS, port 5000 may be taken by the AirPlay Receiver (it answers 403);
+   the browser-pane preview runs the app on 5001 instead.
 
 ## Sample data
 
@@ -846,9 +832,9 @@ and server-only files are removed only with `--prune`.
 
 - `SYNC_TOKEN` guards `/api/data/*` (contextone env var, and in local `.env`;
   503 when unset). `SYNC_URL` in `.env` is the site's address. The tool
-  refuses to send the token over plain http except to localhost — which means
-  it **cannot run until the subdomain has a working certificate** (deploy
-  gotcha 5). Don't add a flag to skip verification.
+  refuses to send the token over plain http except to localhost. Don't add a
+  flag to skip verification. First full upload: 2026-11-18, once the
+  subdomain had its certificate (deploy gotcha 5).
 - Only the shapes media.py and avatars.py store are accepted
   (`media/<id>/video.mp4`, `avatars/<id>.jpg` …); `media-inbox/`, logs and
   backups never leave the Mac.

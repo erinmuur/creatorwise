@@ -101,6 +101,15 @@ These have bitten this setup before:
    neither does the earlier "rate limiting" theory; this needs contextone to
    fix ACME issuance. The CLI has no cert or custom-domain command.
 
+   **Root cause, found 2026-11-17:** `contextone infra deploy` hides the
+   certificate step's failure, but `contextone compute up` (the deployment
+   preset, `.contextone/creatorwise.yml`, compute id 131) reports it.
+   `dokku letsencrypt:enable` solves DNS-01 through Cloudflare, and fails
+   with `cloudflare: failed to find zone contextone.dev.: zone could not be
+   found` — the platform's Cloudflare API token no longer has access to the
+   contextone.dev zone. Only a contextone admin can fix that (contextone
+   ticket #26). Every redeploy until then is wasted.
+
    For local work, just run the app on localhost — no TLS involved:
    ```
    ./venv/bin/python app.py    # http://localhost:5000
@@ -715,7 +724,11 @@ and only names the piece actually has are served.
   "From the creator's own captions on YouTube". Titles quote each
   transcript; hooks are the first spoken line, speech only. Announcement:
   109 pieces, 107 with media — only 086 (no video) and 099 (expired story)
-  have none.
+  have none. On 2026-11-18 Erin added 200, a TikTok by creator 260 posted
+  2026-11-17 (3m24s), which made her `content_delivered` (she had only
+  opted in). Saved with TikTok's own Download once Erin had signed in
+  (203.4s), Whisper transcript with the author's name, "Maasverse" and
+  "ACOTAR" corrected: 110 pieces, 77 delivered, 109 with media.
 - Stickers Beta, 2026-11-11: 13 of 21 have video, all via TikTok's own
   Download, transcribed and titled (one, a music video over a stats
   screen, keeps its platform label). Four of the 13 are music over

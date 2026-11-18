@@ -32,6 +32,13 @@ services:
       GMAIL_CLIENT_ID: "${ENV.GMAIL_CLIENT_ID}"
       GMAIL_CLIENT_SECRET: "${ENV.GMAIL_CLIENT_SECRET}"
       GMAIL_REFRESH_TOKEN: "${ENV.GMAIL_REFRESH_TOKEN}"
+    # /healthz answers without a login. python, not curl: the slim image has
+    # no curl.
+    healthcheck:
+      test: "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/healthz')\""
+      interval: 30
+      timeout: 5
+      retries: 3
     source_mounts:
       - source: "./data"
         target: "/app/data"

@@ -31,6 +31,8 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `media.py` | saved videos / carousel slides / transcripts under `data/media/` |
 | `tools/import_media.py` | drop folders per post, then file what a person saved |
 | `tools/transcribe_media.py` | local Whisper transcripts; Vision OCR for slides |
+| `datasync.py` | token-guarded upload endpoints for `data/` (see below) |
+| `tools/push_data.py` | send the local DB, media and photos to the server |
 | `tools/refresh_followers.py` | worklist of handles; load follower readings with history |
 | `tools/fetch_youtube_followers.py` | subscriber counts from the YouTube Data API |
 | `templates/` | Jinja templates |
@@ -89,11 +91,15 @@ These have bitten this setup before:
    browser cannot open the dashboard at all until a certificate exists.
 
    Four deploys and a restart across 2026-11-05 → 11-09 produced no new cert.
-   `spark.infra.contextone.dev` serves a correct cert, so issuance works
-   platform-wide; this is specific to this subdomain. Suspected Let's Encrypt
-   rate limiting from the earlier failed (private-repo) deploys. The CLI exposes
-   no cert or custom-domain command, so the options are a contextone support
-   ticket or a different subdomain.
+   **It is not this subdomain — the platform has stopped issuing.** On
+   2026-11-17 a deploy to a fresh subdomain, `creatorwise-app` (instance 455),
+   came up with the same wrong certificate. Certificate Transparency logs
+   (crt.sh, `%.infra.contextone.dev`) show no certificate issued for *any*
+   `*.infra.contextone.dev` name since 2026-09-13; `spark` works only because
+   its cert dates from 2026-09-05. Those Sep 5 certs, spark's included, expire
+   2026-12-04 and have not been renewed. So a new subdomain does not help, and
+   neither does the earlier "rate limiting" theory; this needs contextone to
+   fix ACME issuance. The CLI has no cert or custom-domain command.
 
    For local work, just run the app on localhost — no TLS involved:
    ```
@@ -814,6 +820,30 @@ nothing is published without Erin accepting it.
   not `--project`/`--subdomain`. The id is in the deploy output (currently 454).
 - Deploy reports `status: degraded` / `unknown` even on a healthy instance.
   Check `/healthz` and the logs instead of trusting it.
+
+## Getting the data onto the server
+
+`data/` is gitignored (public repo), so a deploy carries code and an empty
+volume. `tools/push_data.py` copies the local database, `data/media/` and
+`data/avatars/` to the deployed instance through `datasync.py`'s endpoints,
+never through GitHub. **The local copy is the source of truth**: the server's
+database is replaced whole (its previous copy kept as
+`creatorwise.db.bak-sync`), files are sent only where their sha256 differs,
+and server-only files are removed only with `--prune`.
+
+- `SYNC_TOKEN` guards `/api/data/*` (contextone env var, and in local `.env`;
+  503 when unset). `SYNC_URL` in `.env` is the site's address. The tool
+  refuses to send the token over plain http except to localhost — which means
+  it **cannot run until the subdomain has a working certificate** (deploy
+  gotcha 5). Don't add a flag to skip verification.
+- Only the shapes media.py and avatars.py store are accepted
+  (`media/<id>/video.mp4`, `avatars/<id>.jpg` …); `media-inbox/`, logs and
+  backups never leave the Mac.
+- A replacement database must pass `integrity_check` and contain the
+  creatorwise tables, and is copied in with SQLite's backup API so the other
+  gunicorn worker's open handle stays valid.
+- Re-run it after anything changes local data — imports, merges, and the
+  daily referral refresh, which updates only the local database.
 
 ## Adding a model
 

@@ -1,0 +1,33 @@
+# A single-service contextone deployment: https://creatorwise.app.contextone.dev
+# (contextone compute up --file .contextone/creatorwise.yml).
+#
+# Secrets (DASHBOARD_PASSWORD, SECRET_KEY, INGEST_TOKEN, SYNC_TOKEN, GMAIL_*)
+# are NOT listed here: contextone injects every account env var into a
+# deployment automatically. Only non-secret settings go in `environment`.
+version: 1
+preset: deployment
+name: creatorwise
+build: Dockerfile
+environment:
+  DATABASE_URL: "sqlite:////app/data/creatorwise.db"
+  # Leave off: seed.py would fill an empty volume with invented creators.
+  SEED_SAMPLE_DATA: "0"
+  # Deployments are HTTPS-only, so the session cookie can be Secure.
+  SESSION_COOKIE_SECURE: "1"
+# The database, media and photos. Persistent across redeploys; filled from
+# the Mac with tools/push_data.py, never from git.
+mounts:
+  - container: /app/data
+healthcheck:
+  test: python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/healthz')"
+  interval: 30
+  timeout: 5
+  retries: 3
+# Everything else sits behind contextone's sign-in as well as the app's own
+# password. These do their own bearer-token checks (see auth.PUBLIC_ENDPOINTS).
+public_paths:
+  - /healthz
+  - /api/data
+  - /api/ingest
+  - /api/scan
+  - /api/gmail/check

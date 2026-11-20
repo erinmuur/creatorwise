@@ -86,6 +86,35 @@ class FormTests(unittest.TestCase):
         self.assertIn(f'name="account_number" inputmode="numeric" autocomplete="off" '
                       f'value="{ACCOUNT}"', page)
 
+    def test_paid_by_paypal(self):
+        r = self.post(csrf_token=self.token(), payment_method="paypal",
+                      paypal_email="Bea.Pays@Example.com", phone="555-0100")
+        self.assertEqual(r.status_code, 302)
+        self.assertNotIn("payment_error", r.headers["Location"])
+        with appmod.app.app_context():
+            c = db.session.get(Creator, self.cid)
+            self.assertEqual((c.payment_method, c.payment_handle),
+                             ("paypal", "bea.pays@example.com"))
+            self.assertTrue(c.payment_ready)
+        page = self.client.get(f"/creators/{self.cid}").get_data(as_text=True)
+        self.assertIn("Paid by PayPal — ready to pay", page)
+
+    def test_paypal_needs_an_address(self):
+        r = self.post(csrf_token=self.token(), payment_method="paypal")
+        self.assertIn("payment_error=", r.headers["Location"])
+        r = self.post(csrf_token=self.token(), payment_method="paypal",
+                      paypal_email="not an email")
+        self.assertIn("payment_error=", r.headers["Location"])
+
+    def test_bank_transfer_is_ready_only_with_both_numbers(self):
+        self.post(csrf_token=self.token(), payment_method="bank", account_number=ACCOUNT)
+        with appmod.app.app_context():
+            self.assertFalse(db.session.get(Creator, self.cid).payment_ready)
+        self.post(csrf_token=self.token(), payment_method="bank", account_number=ACCOUNT,
+                  routing_number=ROUTING)
+        with appmod.app.app_context():
+            self.assertTrue(db.session.get(Creator, self.cid).payment_ready)
+
     def test_no_token_no_save(self):
         r = self.post(account_number=ACCOUNT, routing_number=ROUTING)
         self.assertEqual(r.status_code, 400)
@@ -113,8 +142,9 @@ class MergeTests(unittest.TestCase):
     def setUp(self):
         self.path = os.path.join(tempfile.mkdtemp(), "local.db")
         conn = sqlite3.connect(self.path)
-        conn.execute("CREATE TABLE creators (id INTEGER PRIMARY KEY, name TEXT)")
-        conn.execute("INSERT INTO creators VALUES (1, 'Bea'), (2, 'Pax')")
+        conn.execute("CREATE TABLE creators (id INTEGER PRIMARY KEY, name TEXT, "
+                     "payment_method TEXT, payment_handle TEXT)")
+        conn.execute("INSERT INTO creators (id, name) VALUES (1, 'Bea'), (2, 'Pax')")
         conn.commit()
         self.conn = conn
 
@@ -144,6 +174,15 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(self.banks(), {1: "Mac Bank", 2: "Pax Bank"})
         newer = payments.merge_rows(self.conn, [self.row(1, "Newest", "2026-11-20T08:00:00")])
         self.assertEqual((newer, self.banks()[1]), (1, "Newest"))
+
+    def test_a_paypal_address_set_on_the_server_comes_back(self):
+        row = dict(self.row(2, None, "2026-11-20T09:00:00"), account_number=None,
+                   routing_number=None, payment_method="paypal",
+                   payment_handle="pax@example.com")
+        payments.merge_rows(self.conn, [row])
+        self.assertEqual(self.conn.execute(
+            "SELECT payment_method, payment_handle FROM creators WHERE id = 2").fetchone(),
+            ("paypal", "pax@example.com"))
 
 
 if __name__ == "__main__":

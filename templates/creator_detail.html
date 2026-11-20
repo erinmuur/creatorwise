@@ -188,30 +188,43 @@
       {% elif request.args.get('payment_error') %}
       <p class="row-sub pay-note pay-error">Not saved: {{ request.args.get('payment_error') }}.</p>
       {% endif %}
+      {% set by_paypal = creator.payment_method == 'paypal' %}
       <p class="row-sub" style="margin: 0 0 var(--space-12)">
-        {%- if pay and pay.has_bank_account %}Bank details on file
+        {%- if by_paypal and creator.payment_handle %}Paid by PayPal — ready to pay
+        {%- elif by_paypal %}Paid by PayPal — no PayPal email yet
+        {%- elif pay and pay.has_bank_account %}Bank details on file
         {%- elif pay and not pay.is_empty %}Partly filled in — no account and routing number yet
-        {%- else %}No bank details yet{% endif -%}
+        {%- else %}No payment details yet{% endif -%}
       </p>
       <dl class="kv">
+        <dt>Paid by</dt><dd>{{ 'PayPal' if by_paypal else ('Bank transfer (ACH)' if creator.payment_method == 'bank' else '—') }}</dd>
+        {% if by_paypal %}
+        <dt>PayPal</dt><dd>{{ creator.payment_handle or '—' }}</dd>
+        {% endif %}
         <dt>Name</dt><dd>{{ pay.payee_name if pay and pay.payee_name else '—' }}</dd>
         <dt>Address</dt><dd style="white-space: pre-line">{{ pay.address if pay and pay.address else '—' }}</dd>
         <dt>Phone</dt><dd>{{ pay.phone if pay and pay.phone else '—' }}</dd>
+        {% if not by_paypal or (pay and (pay.bank_name or pay.account_number)) %}
         <dt>Bank</dt><dd>{{ pay.bank_name if pay and pay.bank_name else '—' }}</dd>
         <dt>Account</dt><dd>{{ pay.masked_account if pay and pay.account_number else '—' }}</dd>
         <dt>Routing</dt><dd>{{ pay.routing_number if pay and pay.routing_number else '—' }}</dd>
-        {% if creator.payment_method or creator.payment_handle %}
-        <dt>Method</dt><dd>{{ creator.payment_method | capitalize if creator.payment_method else '—' }}</dd>
-        <dt>Send to</dt><dd>{{ creator.payment_handle or '—' }}</dd>
         {% endif %}
       </dl>
       {% if creator.payment_note %}
       <p class="row-sub" style="margin: var(--space-16) 0 0">{{ creator.payment_note }}</p>
       {% endif %}
       <details class="pay-edit" {{ 'open' if request.args.get('payment_error') }}>
-        <summary class="btn-quiet">{{ 'Edit' if pay and not pay.is_empty else 'Add' }} payment details</summary>
+        <summary class="btn-quiet">{{ 'Edit' if (pay and not pay.is_empty) or creator.payment_method else 'Add' }} payment details</summary>
         <form method="post" action="{{ url_for('creator_payment', creator_id=creator.id) }}" autocomplete="off">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="pay-label">Paid by
+            <select class="field" name="payment_method">
+              <option value="" {{ 'selected' if not creator.payment_method }}>—</option>
+              <option value="bank" {{ 'selected' if creator.payment_method == 'bank' }}>Bank transfer (ACH)</option>
+              <option value="paypal" {{ 'selected' if by_paypal }}>PayPal</option>
+            </select>
+          </label>
+          <label class="pay-label">PayPal email<input class="field" name="paypal_email" type="email" value="{{ creator.payment_handle or '' if by_paypal }}"></label>
           <label class="pay-label">Name<input class="field" name="payee_name" value="{{ pay.payee_name or '' if pay }}"></label>
           <label class="pay-label">Address<textarea class="field" name="address" rows="3">{{ pay.address or '' if pay }}</textarea></label>
           <label class="pay-label">Phone<input class="field" name="phone" value="{{ pay.phone or '' if pay }}"></label>

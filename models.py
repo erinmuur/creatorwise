@@ -147,7 +147,7 @@ class Creator(db.Model):
 
     # How to pay them, coarse. Bank details (account and routing numbers)
     # live in PaymentDetails, below.
-    payment_method = db.Column(db.String(32))      # paypal | venmo | wise | gift_card
+    payment_method = db.Column(db.String(32))      # bank | paypal (payments.METHODS)
     payment_handle = db.Column(db.String(254))
     payment_note = db.Column(db.Text)
 
@@ -214,6 +214,15 @@ class Creator(db.Model):
         if self.recruited_by:
             return self.recruited_by.name
         return self.recruited_by_note or None
+
+    @property
+    def payment_ready(self):
+        """Everything needed to pay them: a PayPal address if they're paid by
+        PayPal, otherwise an account and routing number. Decides which of
+        Erin's two payment emails they get."""
+        if self.payment_method == "paypal":
+            return bool(self.payment_handle)
+        return bool(self.payment_details and self.payment_details.has_bank_account)
 
     @property
     def source_label(self):

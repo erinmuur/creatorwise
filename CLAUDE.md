@@ -860,8 +860,15 @@ refuses to replace the database rather than risk losing them. The endpoint
 is in `datasync.ENDPOINTS`, so the session gate lets the token through —
 leaving it out made every upload fail with a 302 in the tests.
 
-`PaymentDetails.has_bank_account` (both numbers present) is what decides
-which of Erin's two payment emails a creator gets.
+Paid by bank transfer (ACH) or **PayPal**: the method and the PayPal address
+live on the creator (`payment_method` = `bank` | `paypal`, `payment_handle`
+= the PayPal email — columns that already existed, so no migration), edited
+in the same panel and carried back from the live site with the bank fields
+under the one `updated_at`. The invoice importer sets PayPal from "PayPal:
+x@y" or a paypal.me link, and bank transfer when an invoice has both numbers.
+
+`Creator.payment_ready` — a PayPal address for PayPal, otherwise both bank
+numbers — is what decides which of Erin's two payment emails a creator gets.
 
 ## The mail scanner
 

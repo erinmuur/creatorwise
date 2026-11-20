@@ -85,6 +85,11 @@ class ParseTests(unittest.TestCase):
         f = ii.parse("Address: 1 Example St NW,,\nSpringfield, IL 62701\n")
         self.assertEqual(f["address"], "1 Example St NW\nSpringfield, IL 62701")
 
+    def test_a_paypal_address(self):
+        self.assertEqual(ii.parse("Payment via PayPal: Bea.Lune@Example.com")["paypal"],
+                         "bea.lune@example.com")
+        self.assertEqual(ii.parse("Pay me at paypal.me/bealune")["paypal"], "paypal.me/bealune")
+
     def test_a_bank_number_is_never_taken_for_a_phone(self):
         f = ii.parse(f"Account number: 5550100199\nRouting: {ROUTING}")
         self.assertIsNone(f["phone"])
@@ -130,6 +135,22 @@ class PlanTests(unittest.TestCase):
         (e,) = self.plan({"Josephine (Jo) Brightwater - 2026 - Announcement.pdf":
                           "From: To\nAccount number: 12345678"})
         self.assertEqual((e["creator"].name, e["how"]), ("Jo Brightwater", "file name"))
+
+    def test_a_paypal_invoice_makes_them_paid_by_paypal(self):
+        text = "bea@example.com\nAddress: 1 Example Street\nSpringfield, IL 62701\nPayPal: bea.pays@example.com"
+        entries = self.plan({"inv.pdf": text})
+        self.assertEqual(entries[0]["fields"]["payment_method"], "paypal")
+        out = ii.render(entries)
+        self.assertIn("PayPal", out)
+        self.assertNotIn("not in the invoice: bank", out)
+        ii.apply(entries, db)
+        c = db.session.get(Creator, self.bea.id)
+        self.assertEqual((c.payment_method, c.payment_handle), ("paypal", "bea.pays@example.com"))
+        self.assertTrue(c.payment_ready)
+
+    def test_full_bank_details_make_it_a_bank_transfer(self):
+        (e,) = self.plan({"inv.pdf": LABELLED})
+        self.assertEqual(e["fields"]["payment_method"], "bank")
 
     def test_unmatched_is_held_not_guessed(self):
         (e,) = self.plan({"x.pdf": "From: Somebody Else\nAccount number: 12345678"})

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Fill creators' payment details from their PDF invoices. Erin runs this.
 
+Bank transfer or PayPal: an invoice with full bank details makes them paid by
+bank transfer; one with only a PayPal address ("PayPal: x@y", paypal.me/x)
+makes them paid by PayPal.
+
     ./venv/bin/python tools/import_invoices.py ~/Desktop/invoices
     ./venv/bin/python tools/import_invoices.py ~/Desktop/invoices --apply
 
@@ -109,6 +113,8 @@ STREET = re.compile(r"^\s*\d+[A-Za-z]?\s+\S.*\b(st|street|ave|avenue|rd|road|blv
                     r"highway|apt|suite|unit)\b", re.I)
 CITY_LINE = re.compile(r"[A-Za-z .'-]+,?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?\b")
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+PAYPAL = re.compile(r"pay\s*pal[^@\n]{0,40}?([\w.+-]+@[\w-]+(?:\.[\w-]+)+)", re.I)
+PAYPAL_ME = re.compile(r"\b(paypal\.me/[\w.-]+)", re.I)
 
 
 def _first(patterns, text):
@@ -149,7 +155,10 @@ def parse(text):
     """The payment fields an invoice states, as written. Missing ones are
     None. Pure: no validation beyond shape, no database."""
     fields = {"payee_name": None, "address": None, "phone": None, "bank_name": None,
-              "account_number": None, "routing_number": None}
+              "account_number": None, "routing_number": None, "paypal": None}
+    m = PAYPAL.search(text) or PAYPAL_ME.search(text)
+    if m:
+        fields["paypal"] = m.group(1).lower().strip(".")
     fields["account_number"] = _first(ACCOUNT, text)
     fields["routing_number"] = _first(ROUTING, text)
     m = BANK.search(text)
@@ -291,6 +300,13 @@ def plan(files, creators, holders, read=pdf_text):
                                      "(a misread or a typo) — left out")
             routing = ""
         fields["account_number"], fields["routing_number"] = account or None, routing or None
+        # How they're paid: full bank details mean a bank transfer; otherwise
+        # a PayPal address on the invoice means PayPal.
+        paypal = fields.pop("paypal", None)
+        if fields["account_number"] and fields["routing_number"]:
+            fields["payment_method"] = "bank"
+        elif paypal:
+            fields["payment_method"], fields["payment_handle"] = "paypal", paypal
         creator, how = match(text, path, fields, creators, holders)
         if creator is None:
             entry["problems"].append(how)
@@ -305,8 +321,10 @@ def plan(files, creators, holders, read=pdf_text):
 
 def render(entries):
     lines = []
-    labels = [("payee_name", "name"), ("address", "address"), ("phone", "phone"),
+    labels = [("payment_method", "paid by"), ("payment_handle", "paypal"),
+              ("payee_name", "name"), ("address", "address"), ("phone", "phone"),
               ("bank_name", "bank"), ("account_number", "account"), ("routing_number", "routing")]
+    methods = {"bank": "Bank transfer (ACH)", "paypal": "PayPal"}
     for e in entries:
         who = f"{e['creator'].name} (matched by {e['how']})" if e["creator"] else "NOT MATCHED"
         lines.append(f"{os.path.basename(e['file'])} -> {who}")
@@ -319,12 +337,17 @@ def render(entries):
                 continue
             value = shown_fields[key]
             shown = mask(value) if key in ("account_number", "routing_number") \
+                else methods.get(value, value) if key == "payment_method" \
                 else value.replace("\n", ", ")
-            old = getattr(current, key, None) if current else None
+            holder = e["creator"] if key in ("payment_method", "payment_handle") else current
+            old = getattr(holder, key, None) if holder else None
             note = "" if not old or old == value else "   (replaces what's on file)"
             lines.append(f"    {label:<8} {shown}{note}")
         if e["creator"]:
-            missing = [label for key, label in labels if key not in e["fields"]]
+            wanted = (["payment_handle"] if e["fields"].get("payment_method") == "paypal"
+                      else ["payee_name", "address", "phone", "bank_name",
+                            "account_number", "routing_number"])
+            missing = [label for key, label in labels if key in wanted and key not in e["fields"]]
             if missing:
                 lines.append(f"    not in the invoice: {', '.join(missing)}")
         for p in e["problems"]:
@@ -344,7 +367,12 @@ def apply(entries, db, now=None):
             row = PaymentDetails(creator_id=e["creator"].id)
             db.session.add(row)
         for key, value in e["fields"].items():
-            setattr(row, key, value)
+            if key in ("payment_method", "payment_handle"):
+                setattr(e["creator"], key, value)
+            else:
+                setattr(row, key, value)
+        if e["fields"].get("payment_method") == "bank":
+            e["creator"].payment_handle = None
         row.updated_at = now
         saved += 1
     db.session.commit()

@@ -11,6 +11,12 @@ from models import PaymentDetails, db
 
 LIMITS = {"payee_name": 200, "phone": 40, "bank_name": 120, "address": 600}
 
+# How a creator is paid. Stored on the creator (payment_method /
+# payment_handle, columns that already existed), so adding PayPal needed no
+# migration. A PayPal payout needs only the address.
+METHODS = {"bank": "Bank transfer (ACH)", "paypal": "PayPal"}
+EMAIL = re.compile(r"^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$")
+
 
 def digits(value):
     """Numbers are often pasted with spaces or dashes: keep the digits."""
@@ -47,6 +53,17 @@ def check(form):
     routing = values["routing_number"]
     if routing and not routing_ok(routing):
         errors.append("routing number isn't a valid 9-digit US routing number")
+
+    method = (form.get("payment_method") or "").strip().lower() or None
+    if method and method not in METHODS:
+        errors.append("unknown payment method")
+    paypal = (form.get("paypal_email") or "").strip().lower() or None
+    if paypal and not EMAIL.match(paypal):
+        errors.append("PayPal email doesn't look like an email address")
+    if method == "paypal" and not paypal:
+        errors.append("PayPal needs the email address to send to")
+    values["payment_method"] = method
+    values["payment_handle"] = paypal if method == "paypal" else None
     return values, errors
 
 
@@ -60,8 +77,12 @@ def save(creator, form, now=None):
     if row is None:
         row = PaymentDetails(creator_id=creator.id)
         db.session.add(row)
-    for field, value in values.items():
-        setattr(row, field, value)
+    for field in PaymentDetails.FIELDS:
+        setattr(row, field, values[field])
+    creator.payment_method = values["payment_method"]
+    creator.payment_handle = values["payment_handle"]
+    # One timestamp for the whole payment section, method included: it is
+    # what decides whether the live site's copy or the Mac's is newer.
     row.updated_at = now or datetime.utcnow()
     db.session.commit()
     return []
@@ -75,6 +96,8 @@ def as_rows(details):
     for row in details:
         item = {f: getattr(row, f) for f in PaymentDetails.FIELDS}
         item["creator_id"] = row.creator_id
+        item["payment_method"] = row.creator.payment_method if row.creator else None
+        item["payment_handle"] = row.creator.payment_handle if row.creator else None
         item["updated_at"] = row.updated_at.isoformat() if row.updated_at else None
         out.append(item)
     return out
@@ -115,6 +138,10 @@ def merge_rows(conn, rows):
             conn.execute(
                 f"UPDATE payment_details SET {', '.join(c + ' = ?' for c in cols)} "
                 "WHERE creator_id = ?", vals + [row["creator_id"]])
+        if "payment_method" in row:     # a server from before PayPal sends neither
+            conn.execute("UPDATE creators SET payment_method = ?, payment_handle = ? "
+                         "WHERE id = ?", (row.get("payment_method"), row.get("payment_handle"),
+                                          row["creator_id"]))
         taken += 1
     conn.commit()
     return taken

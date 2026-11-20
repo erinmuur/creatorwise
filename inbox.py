@@ -108,14 +108,16 @@ def _is_bare_profile(platform, url):
         return True
     segments = [s for s in path.split("/") if s]
     if platform == "instagram":
-        # /p/<id>, /reel/<id>, /tv/<id> are content; /<handle> alone is a profile.
-        return not (segments and segments[0] in {"p", "reel", "reels", "tv"})
+        # /p/<id>, /reel/<id>, /tv/<id> are content, and so is the same with
+        # the handle in front (/<handle>/reel/<id>), which is how the app's
+        # share sheet writes them; /<handle> alone is a profile.
+        return not any(s in {"p", "reel", "reels", "tv"} for s in segments[:2])
     if platform == "tiktok":
-        # /@handle/video/<id> is content; /@handle alone is a profile.
-        # Short vm./vt. links are always content.
+        # /@handle/video/<id> and /@handle/photo/<id> are content; /@handle
+        # alone is a profile. Short vm./vt. links are always content.
         if "tiktok.com/t/" in url.lower() or re.search(r"(vm|vt)\.tiktok\.com", url, re.I):
             return False
-        return "video" not in segments
+        return not ({"video", "photo"} & set(segments))
     if platform == "youtube":
         if "youtu.be" in url.lower():
             return False

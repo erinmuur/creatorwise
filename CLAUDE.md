@@ -35,6 +35,10 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `tools/push_data.py` | send the local DB, media and photos to the server |
 | `tools/refresh_followers.py` | worklist of handles; load follower readings with history |
 | `tools/fetch_youtube_followers.py` | subscriber counts from the YouTube Data API |
+| `tools/content_requests.py` | content Erin emails in -> pieces (see below) |
+| `tools/capture.py` | get a post's media into its drop folder (attachment, TikTok's Download, recording, slides) |
+| `tools/screen_record.swift` | records the Claude window + its audio (ScreenCaptureKit); built by capture.py |
+| `docs/content-by-email.md` | how emailed content is matched, captured and filed |
 | `templates/` | Jinja templates |
 | `static/` | CSS and assets |
 | `data/` | SQLite DB — gitignored, persistent in production |
@@ -780,6 +784,32 @@ and only names the piece actually has are served.
   118 against 116. Settled 2026-11-17: both were cross-posts (so was
   143/147) and are merged. The importer's duplicate guard only checks
   videos.
+
+## Content by email
+
+Erin emails post links (usually with the video attached) to her address with
+a `+creatorwise` tag, saying whose and which campaign. A Claude desktop
+scheduled task on her Mac, `creatorwise-content` (every 2h, 08:00–20:00,
+prompt in `~/.claude/scheduled-tasks/creatorwise-content/`), reads the mail
+with the Gmail connector, runs `tools/content_requests.py` (match and add),
+`tools/capture.py` (file the attachment; otherwise TikTok's own Download, or
+record an Instagram reel as it plays in the browser pane), then the usual
+`import_media.py`, `transcribe_media.py`, titles and `push_data.py`. Full
+guide: `docs/content-by-email.md`.
+
+- Same rules as the importers: never creates a creator; the handle on the
+  post outranks a first name in the email; no campaign named, or anything
+  ambiguous, is held and reported. Only mail from Erin's own address counts.
+- An attachment always wins; recording is only for emails without a file,
+  and only while the pane is on screen (a hidden pane isn't drawn).
+  Unrecorded pieces wait on `content_requests.py pending`.
+- Recording is capture of what the pane shows, like the carousel
+  screenshots — Erin's call, 2026-11-19, after a script that pulled files
+  from Instagram's internal API was declined. Keep it that way.
+- Processed mail ids live in `data/content-requests.json`; a line per run in
+  `data/content-requests.log`.
+- First run, 2026-11-19: piece 201 (new, with Erin's file) and an Instagram
+  reel added to 190 as its cross-post (same 240.3s readathon video).
 
 ## The mail scanner
 

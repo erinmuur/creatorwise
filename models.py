@@ -995,6 +995,62 @@ class PaymentDetails(db.Model):
         return not any(getattr(self, f) for f in self.FIELDS)
 
 
+class Payment(db.Model):
+    """What a creator is owed for one campaign, and whether it's been paid.
+
+    One per creator per campaign (Erin, 2026-11-20): due 14 days after their
+    first post in it; the amount is the campaign's base fee plus a bonus per
+    referral in those 14 days (payments.PAY_RULES). Statuses: `upcoming`
+    (not due yet), `pending` (due, not paid), `paid`. tools/payments_due.py
+    keeps these current; the Payments page marks them paid. `updated_at`
+    lets push_data.py keep a "Mark paid" clicked on the live site.
+    """
+
+    __tablename__ = "payments"
+    __table_args__ = (db.UniqueConstraint("creator_id", "campaign_id"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    creator_id = db.Column(db.Integer, db.ForeignKey("creators.id"), nullable=False)
+    campaign_id = db.Column(db.Integer, db.ForeignKey("campaigns.id"), nullable=False)
+    status = db.Column(db.String(16), nullable=False, default="upcoming")
+    first_posted_on = db.Column(db.Date)
+    due_on = db.Column(db.Date)
+    base_cents = db.Column(db.Integer)
+    per_referral_cents = db.Column(db.Integer)
+    referrals = db.Column(db.Integer)        # None until counted, after the window closes
+    referral_from = db.Column(db.Date)
+    referral_to = db.Column(db.Date)         # inclusive
+    invoice_number = db.Column(db.Integer, unique=True)
+    drafted_on = db.Column(db.Date)
+    draft_id = db.Column(db.String(120))
+    paid_on = db.Column(db.Date)
+    note = db.Column(db.Text)
+    updated_at = db.Column(db.DateTime)
+
+    creator = db.relationship("Creator")
+    campaign = db.relationship("Campaign")
+
+    STATUS_LABELS = {"upcoming": "Upcoming", "pending": "Pending", "paid": "Paid"}
+
+    @property
+    def status_label(self):
+        return self.STATUS_LABELS.get(self.status, self.status)
+
+    @property
+    def bonus_cents(self):
+        return (self.referrals or 0) * (self.per_referral_cents or 0)
+
+    @property
+    def total_cents(self):
+        return (self.base_cents or 0) + self.bonus_cents
+
+    @property
+    def amount_known(self):
+        """The bonus counts referrals over the whole window, so the total is
+        only final once it has been counted after the window closed."""
+        return self.referrals is not None
+
+
 class InboxItem(db.Model):
     """A creator email that looks like a content submission, awaiting review.
 

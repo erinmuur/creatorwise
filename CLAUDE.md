@@ -35,6 +35,8 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `payments.py` | creators' payment details: form checks, and merging live-site edits back |
 | `tools/import_invoices.py` | Erin runs it: payment details from creators' PDF invoices (masked preview, `--apply`) |
 | `tools/pdf_text.swift` | PDF text via PDFKit, Vision for scanned pages; built by import_invoices.py |
+| `tools/payments_due.py` | who's due, referral bonus, invoices, Superhuman draft data (daily job) |
+| `tools/invoice_pdf.swift` | renders one invoice PDF from a JSON spec on stdin |
 | `tools/push_data.py` | send the local DB, media and photos to the server |
 | `tools/refresh_followers.py` | worklist of handles; load follower readings with history |
 | `tools/fetch_youtube_followers.py` | subscriber counts from the YouTube Data API |
@@ -869,6 +871,44 @@ x@y" or a paypal.me link, and bank transfer when an invoice has both numbers.
 
 `Creator.payment_ready` — a PayPal address for PayPal, otherwise both bank
 numbers — is what decides which of Erin's two payment emails a creator gets.
+
+## Payments
+
+One `Payment` per creator per campaign (Erin, 2026-11-20). Only campaigns in
+`payments.PAY_RULES` raise them — today the Readwise Books Announcement:
+**$100 for the post + $5 per referral in the 14 days from their first post
+in the campaign** (first post's day included), **due 14 days after that
+first post**. Statuses: `upcoming`, `pending` (due, unpaid), `paid` — the
+Payments page lists them with Mark paid / Mark unpaid; a click on the live
+site comes back through `push_data.py` like payment details do.
+
+- The first-post date needs every one of their pieces dated (an undated one
+  might be the first). On 2026-11-20 the 27 undated pieces of unpaid
+  creators were dated: TikTok from its id (short links opened in the pane),
+  Instagram from the post page's own `<time datetime>`, YouTube from its
+  `datePublished` — all UTC dates, like the TikTok ones. One
+  creator's first Announcement piece (111) is dated Oct 26, two days
+  before the campaign; it counts from then.
+- The bonus is counted once the window has closed: `referral-sql` writes one
+  query over each creator's own window (shared addresses left out), with a
+  ROLLUP checksum; `referral-load` refuses a result that doesn't add up.
+- 38 creators were marked paid from Erin's list on 2026-11-20 ("paid before
+  creatorwise tracked payments"). Creators 292 and 91
+  are one person: the payment is on 292, the invoice details on 91 — merge
+  them when convenient. One creator posted but has no piece on file yet,
+  so his payment has no date.
+- **Invoices** are PDFs in Erin's creators' layout (`tools/invoice_pdf.swift`,
+  numbered from 1001), with full bank numbers at Erin's decision. They live
+  in `data/invoices/` (gitignored, never synced: push_data only sends media
+  and photos). Nothing prints their contents.
+- **Emails** are Erin's two templates (`payments_due.py`: details on file →
+  "confirm the attached payment details", with the invoice; otherwise the
+  one asking for bank details or PayPal), drafted — never sent — in her
+  Superhuman by the daily task `creatorwise-payments` (08:30, after the 7am
+  referral refresh). Invoices are attached with Superhuman's
+  `upload_attachment`: the task gets an upload URL and `payments_due.py
+  upload` POSTs the file's bytes from disk, so the numbers never pass through
+  the model. First run 2026-11-20: 20 drafts, 3 with invoices.
 
 ## The mail scanner
 

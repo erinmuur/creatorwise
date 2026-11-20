@@ -163,8 +163,9 @@ def payment_details():
     by tools/push_data.py before every upload; behind SYNC_TOKEN like the
     rest of this blueprint."""
     import payments
-    from models import PaymentDetails
-    return jsonify(rows=payments.as_rows(PaymentDetails.query.all()))
+    from models import Payment, PaymentDetails
+    return jsonify(rows=payments.as_rows(PaymentDetails.query.all()),
+                   payments=payments.payment_rows(Payment.query.all()))
 
 
 @bp.route("/api/data/file/<path:relpath>", methods=["PUT"])

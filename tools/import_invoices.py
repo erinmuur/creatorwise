@@ -36,7 +36,7 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -502,7 +502,7 @@ def render(entries):
 
 def apply(entries, db, now=None):
     from models import PaymentDetails
-    now = now or datetime.utcnow()
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     saved = 0
     for e in entries:
         if not e["creator"] or not e["fields"]:

@@ -132,9 +132,10 @@ class Remote:
         return self._call("DELETE", "/api/data/file/" + urllib.parse.quote(rel))
 
     def payment_details(self):
-        """The server's payment details, or None if it predates them."""
+        """The server's payment details and payment statuses
+        ({"rows": [...], "payments": [...]}), or None if it predates them."""
         try:
-            return self._call("GET", "/api/data/payment-details").get("rows", [])
+            return self._call("GET", "/api/data/payment-details")
         except OSError as error:
             if "HTTP 404" in str(error):
                 return None
@@ -194,7 +195,7 @@ def push(remote, root, database, apply_changes, prune, say=print):
     # server's newer ones into the local database first, or this upload
     # would replace them with the Mac's older copy.
     try:
-        rows = remote.payment_details()
+        synced = remote.payment_details()
     except OSError as error:
         failures.append(("payment details", str(error)))
         for rel, err in failures:
@@ -202,15 +203,19 @@ def push(remote, root, database, apply_changes, prune, say=print):
         say("Database NOT replaced: couldn't read the server's payment details, "
             "and replacing it could lose ones entered there.")
         return diff, failures
-    if rows:
+    synced = synced or {}
+    if synced.get("rows") or synced.get("payments"):
         import payments
         conn = sqlite3.connect(database)
         try:
-            taken = payments.merge_rows(conn, rows)
+            taken = payments.merge_rows(conn, synced.get("rows") or [])
+            marked = payments.merge_payments(conn, synced.get("payments") or [])
         finally:
             conn.close()
         if taken:
             say(f"Kept {taken} payment detail edit(s) made on the live site.")
+        if marked:
+            say(f"Kept {marked} payment status change(s) made on the live site.")
 
     with tempfile.TemporaryDirectory() as scratch:
         copy = snapshot(database, os.path.join(scratch, "creatorwise.db"))

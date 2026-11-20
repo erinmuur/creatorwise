@@ -193,8 +193,7 @@ class TestClientRemote(push_data.Remote):
             **AUTH, "X-Content-SHA256": sha(content)}))
 
     def payment_details(self):
-        return self._check(self.client.get("/api/data/payment-details",
-                                           headers=AUTH))["rows"]
+        return self._check(self.client.get("/api/data/payment-details", headers=AUTH))
 
 
 class PushTests(Base):

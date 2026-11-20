@@ -13,6 +13,7 @@ from flask import (
 
 from models import (
     FOLLOW_UP_ORDER,
+    Payment,
     PLATFORMS,
     PLATFORM_LABELS,
     REFERRAL_WINDOW_DAYS,
@@ -112,6 +113,7 @@ def inject_globals():
         "referral_window": REFERRAL_WINDOW_DAYS,
         "today": date.today(),
         "inbox_pending": InboxItem.query.filter_by(status="pending").count(),
+        "payments_pending": Payment.query.filter_by(status="pending").count(),
         "avatar_ids": _avatar_ids(),
         "media_ids": _media_ids(),
         "media_thumb": _media_thumb,
@@ -370,6 +372,37 @@ def creator_payment(creator_id):
                                 payment_error="; ".join(errors)) + "#payment")
     return redirect(url_for("creator_detail", creator_id=creator.id, payment_saved=1)
                     + "#payment")
+
+
+@app.template_filter("money")
+def money_filter(cents):
+    return payments.money(cents)
+
+
+@app.route("/payments")
+def payments_page():
+    rows = Payment.query.all()
+    by_status = {s: [] for s in ("pending", "upcoming", "paid")}
+    for p in rows:
+        by_status.setdefault(p.status, []).append(p)
+    by_status["pending"].sort(key=lambda p: (p.due_on or date.max, p.creator.name))
+    by_status["upcoming"].sort(key=lambda p: (p.due_on or date.max, p.creator.name))
+    by_status["paid"].sort(key=lambda p: (p.paid_on or date.min, p.creator.name), reverse=True)
+    totals = {s: sum(p.total_cents for p in by_status[s] if p.amount_known) for s in by_status}
+    return render_template("payments.html", by_status=by_status, totals=totals)
+
+
+@app.route("/payments/<int:payment_id>/status", methods=["POST"])
+def payment_status(payment_id):
+    p = db.session.get(Payment, payment_id) or abort(404)
+    if not _csrf_ok():
+        abort(400)
+    if request.form.get("status") == "paid":
+        payments.mark_paid(p, date.today())
+    else:
+        payments.mark_unpaid(p, date.today())
+    db.session.commit()
+    return redirect(url_for("payments_page"))
 
 
 @app.route("/ugc/<int:piece_id>")

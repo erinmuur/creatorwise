@@ -5,7 +5,7 @@ module never logs or prints them; errors name the field, not its value.
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from models import PaymentDetails, db
 
@@ -83,7 +83,7 @@ def save(creator, form, now=None):
     creator.payment_handle = values["payment_handle"]
     # One timestamp for the whole payment section, method included: it is
     # what decides whether the live site's copy or the Mac's is newer.
-    row.updated_at = now or datetime.utcnow()
+    row.updated_at = now or datetime.now(timezone.utc).replace(tzinfo=None)
     db.session.commit()
     return []
 
@@ -156,3 +156,117 @@ def _when(text):
 def _sql_time(text):
     """SQLAlchemy stores DateTime in SQLite as 'YYYY-MM-DD HH:MM:SS.ffffff'."""
     return _when(text).strftime("%Y-%m-%d %H:%M:%S.%f") if text else None
+
+
+# --- what creators are owed ----------------------------------------------------
+
+# Per campaign (Erin, 2026-11-20). Only campaigns listed here raise payments.
+PAY_RULES = {
+    "books-announcement": {
+        "base_cents": 10000,            # $100 for the post
+        "per_referral_cents": 500,      # $5 per referral...
+        "window_days": 14,              # ...in the 14 days from their first post
+        "line": "Readwise Books Announcement Post",
+        "bonus_line": "Referral Bonus",
+    },
+}
+PAY_AFTER_DAYS = 14                     # paid two weeks after the first post
+
+
+def first_posted_on(creator, campaign):
+    """The date of their first piece in the campaign, or None while any of
+    their pieces is undated (an undated one might be the first)."""
+    pieces = [p for p in creator.all_pieces if p.campaign_id == campaign.id]
+    if not pieces or any(p.posted_on is None for p in pieces):
+        return None
+    return min(p.posted_on for p in pieces)
+
+
+def refresh(campaign, today, now=None):
+    """Create or update the payment for everyone who delivered. Never
+    touches a paid one. Returns (created, updated, undated creator names)."""
+    from datetime import timedelta
+    from models import Payment
+
+    rule = PAY_RULES[campaign.slug]
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    created = updated = 0
+    undated = []
+    for part in campaign.participations:
+        if part.status != "content_delivered":
+            continue
+        row = Payment.query.filter_by(creator_id=part.creator_id, campaign_id=campaign.id).first()
+        if row is None:
+            row = Payment(creator_id=part.creator_id, campaign_id=campaign.id,
+                          status="upcoming", base_cents=rule["base_cents"],
+                          per_referral_cents=rule["per_referral_cents"], updated_at=now)
+            db.session.add(row)
+            created += 1
+        if row.status == "paid":
+            continue
+        first = first_posted_on(part.creator, campaign)
+        if first is None:
+            undated.append(part.creator.name)
+        changed = (row.first_posted_on != first)
+        row.first_posted_on = first
+        row.due_on = first + timedelta(days=PAY_AFTER_DAYS) if first else None
+        row.referral_from = first
+        row.referral_to = first + timedelta(days=rule["window_days"] - 1) if first else None
+        if changed:
+            row.referrals = None          # a new window needs a new count
+        status = "pending" if row.due_on and row.due_on <= today else "upcoming"
+        if row.status != status or changed:
+            row.status = status
+            row.updated_at = now
+            updated += 1
+    db.session.commit()
+    return created, updated, sorted(undated)
+
+
+def mark_paid(payment, paid_on, note=None, now=None):
+    payment.status = "paid"
+    payment.paid_on = paid_on
+    if note:
+        payment.note = note
+    payment.updated_at = now or datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def mark_unpaid(payment, today, now=None):
+    payment.status = "pending" if payment.due_on and payment.due_on <= today else "upcoming"
+    payment.paid_on = None
+    payment.updated_at = now or datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def money(cents):
+    return f"${(cents or 0) / 100:,.2f}".replace(".00", "")
+
+
+# --- carrying "Mark paid" from the live site back to the Mac --------------------
+
+def payment_rows(rows):
+    """Payment statuses for /api/data/payment-details — the only part of a
+    payment the live site changes."""
+    return [{"creator_id": p.creator_id, "campaign_id": p.campaign_id, "status": p.status,
+             "paid_on": p.paid_on.isoformat() if p.paid_on else None,
+             "updated_at": p.updated_at.isoformat() if p.updated_at else None} for p in rows]
+
+
+def merge_payments(conn, rows):
+    """Take the server's status and paid date where its change is newer."""
+    have = conn.execute("SELECT name FROM sqlite_master WHERE name = 'payments'").fetchone()
+    if not have:
+        return 0
+    taken = 0
+    for row in rows:
+        local = conn.execute(
+            "SELECT updated_at FROM payments WHERE creator_id = ? AND campaign_id = ?",
+            (row["creator_id"], row["campaign_id"])).fetchone()
+        if local is None or _when(local[0]) >= _when(row.get("updated_at")):
+            continue
+        conn.execute("UPDATE payments SET status = ?, paid_on = ?, updated_at = ? "
+                     "WHERE creator_id = ? AND campaign_id = ?",
+                     (row["status"], row.get("paid_on"), _sql_time(row.get("updated_at")),
+                      row["creator_id"], row["campaign_id"]))
+        taken += 1
+    conn.commit()
+    return taken

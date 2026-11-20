@@ -152,6 +152,44 @@ class PlanTests(unittest.TestCase):
         (e,) = self.plan({"inv.pdf": LABELLED})
         self.assertEqual(e["fields"]["payment_method"], "bank")
 
+    def close(self, payee, filename="invoice.pdf", extra=()):
+        creators = Creator.query.all() + list(extra)
+        return [c.name for c in ii.close_matches(ii.people(payee, filename), creators)]
+
+    def test_close_names(self):
+        for name, email in (("Allie Brook", "ab@example.com"), ("Becca Stone", "bs@example.com"),
+                            ("Juno W", "jw@example.com"), ("Pax", "paxwren@example.com"),
+                            ("Zuri", "zz@example.com"), ("Serena Ann Vale", "sv@example.com")):
+            db.session.add(Creator(name=name, email=email))
+        db.session.commit()
+        self.assertEqual(self.close("Allison Brook"), ["Allie Brook"])          # short form
+        self.assertEqual(self.close("Rebecca Stone"), ["Becca Stone"])          # inside it
+        self.assertEqual(self.close("Juno Wren"), ["Juno W"])                   # an initial
+        self.assertEqual(self.close("Pax Wren"), ["Pax"])                       # surname in email
+        self.assertEqual(self.close("Zuriel Banks"), ["Zuri"])                  # only Zuri
+        self.assertEqual(self.close("Serena Vale"), ["Serena Ann Vale"])        # middle name
+        self.assertEqual(self.close(None, "Samantha Quillon (Stone) - 2026 - X.docx",
+                                    [Creator(name="Samantha Stone", email="ss@example.com")]),
+                         ["Samantha Stone"])                                    # maiden name
+        self.assertEqual(self.close("Brook Allison"), [])                       # not reversed
+
+    def test_close_matches_are_flagged_for_checking(self):
+        db.session.add(Creator(name="Becca Stone", email="bs@example.com"))
+        db.session.commit()
+        (e,) = self.plan({"Rebecca Stone - 2026 - X.docx": "From: Rebecca Stone\nAccount number: 12345678"})
+        self.assertEqual((e["creator"].name, e["how"]), ("Becca Stone", "close name — check it"))
+
+    def test_the_bill_to_address_is_dropped(self):
+        to = "Bill to: Readwise\nAddress: 9 Company Way\nSpringfield, IL 62701\n"
+        texts = {f"inv{i}.pdf": to + f"bea@example.com\n{10 + i} Home Street\nShelbyville, IL 6270{i}"
+                 for i in range(3)}
+        entries = self.plan(texts)
+        self.assertEqual([e["fields"].get("address") for e in entries],
+                         [f"{10 + i} Home Street\nShelbyville, IL 6270{i}" for i in range(3)])
+
+    def test_paypal_is_not_a_name(self):
+        self.assertIsNone(ii.parse("Name: Paypal\nPayPal: bea@example.com")["payee_name"])
+
     def test_unmatched_is_held_not_guessed(self):
         (e,) = self.plan({"x.pdf": "From: Somebody Else\nAccount number: 12345678"})
         self.assertIsNone(e["creator"])

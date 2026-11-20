@@ -161,7 +161,8 @@ def _clean(value, limit=200):
 
 # What a "From:"/"Name:" pattern catches when an invoice prints its labels
 # side by side ("From  To" over two columns): a label, or the client.
-_NOT_A_NAME = re.compile(r"^(?:to|from|bill(?:ed)?\s+to|ship\s+to|pay(?:ee)?|invoice\b.*|"
+_NOT_A_NAME = re.compile(r"^(?:to|from|bill(?:ed)?\s+to|ship\s+to|pay(?:ee)?|pay\s*pal\b.*|"
+                         r"venmo\b.*|zelle\b.*|invoice\b.*|"
                          r"date\b.*|amount\b.*|description\b.*|n/?a|none|-+)$", re.I)
 
 
@@ -203,32 +204,41 @@ def parse(text):
                 break
     fields["phone"] = _clean(candidate, 40)
 
+    fields["addresses"] = addresses(text)
+    fields["address"] = fields["addresses"][0] if fields["addresses"] else None
+    return fields
+
+
+def addresses(text):
+    """Every address on the invoice, labelled ones first. The invoice's own
+    "bill to" (Readwise) is one of them; plan() drops it."""
+    found = []
+
+    def add(parts):
+        value = "\n".join(re.sub(r",\s*,", ",", re.sub(r"\s+", " ", p)).strip(" ,")
+                          for p in parts if p and p.strip(" ,"))[:600]
+        if value and value not in found:
+            found.append(value)
+
     lines = [l.strip() for l in text.splitlines()]
-    m = ADDRESS_LABELLED.search(text)
-    if m:
+    for m in ADDRESS_LABELLED.finditer(text):
         first = m.group(1).strip()
         parts = [first]
-        at = next((i for i, l in enumerate(lines) if m.group(1).strip()[:20] in l), None)
+        at = next((i for i, l in enumerate(lines) if first[:20] and first[:20] in l), None)
         if at is not None and not CITY_LINE.search(first):
             for nxt in lines[at + 1: at + 3]:
                 if nxt and not re.search(r"[:@]", nxt):
                     parts.append(nxt)
                     if CITY_LINE.search(nxt):
                         break
-        fields["address"] = "\n".join(_clean(p) for p in parts if _clean(p))[:600] or None
-    else:
-        for i, line in enumerate(lines):
-            if STREET.search(line):
-                parts = [line]
-                if not CITY_LINE.search(line) and i + 1 < len(lines) and CITY_LINE.search(lines[i + 1]):
-                    parts.append(lines[i + 1])
-                fields["address"] = "\n".join(parts)[:600]
-                break
-    if fields["address"]:
-        fields["address"] = "\n".join(
-            re.sub(r",\s*,", ",", re.sub(r"\s+", " ", l)).strip(" ,")
-            for l in fields["address"].splitlines() if l.strip(" ,"))
-    return fields
+        add(parts)
+    for i, line in enumerate(lines):
+        if STREET.search(line):
+            parts = [line]
+            if not CITY_LINE.search(line) and i + 1 < len(lines) and CITY_LINE.search(lines[i + 1]):
+                parts.append(lines[i + 1])
+            add(parts)
+    return found
 
 
 def emails_in(text):
@@ -265,6 +275,94 @@ def file_names(filename):
     return out
 
 
+_TOKEN = re.compile(r"[a-z0-9']+")
+
+
+def _tokens(name):
+    return _TOKEN.findall(re.sub(r"\([^)]*\)", " ", (name or "").casefold()).replace("’", "'"))
+
+
+def people(payee, filename):
+    """(first, last) pairs the invoice could be naming: its payee, and the
+    file name with any bracketed nickname or maiden name tried in turn."""
+    out = []
+    names = [payee] if payee else []
+    stem = os.path.splitext(os.path.basename(filename))[0].lstrip("_ ")
+    head = re.split(r"\s*[-–—]\s+\d|\s+[-–—]\s+", stem)[0].strip()
+    names.append(head)
+    m = re.search(r"\(([^)]+)\)", head)
+    if m:
+        inner, outer = m.group(1), re.sub(r"\([^)]*\)", " ", head)
+        o = _tokens(outer)
+        names += [inner, f"{inner} {o[-1]}" if o else inner,
+                  f"{o[0]} {inner}" if o else inner]
+    for n in names:
+        t = _tokens(n)
+        if t:
+            pair = (t[0], t[-1] if len(t) > 1 else None)
+            if pair not in out:
+                out.append(pair)
+    return out
+
+
+def _first_fits(a, b):
+    """Allie/Allison, Sam/Samantha, Becca/Rebecca, Liv/Olivia."""
+    if a == b:
+        return True
+    short, long_ = sorted((a, b), key=len)
+    if len(short) >= 2 and long_.startswith(short):
+        return True
+    if len(short) >= 4 and short in long_:
+        return True
+    shared = len(os.path.commonprefix([short, long_]))
+    return shared >= max(3, len(short) - 1)        # Allie / Allison
+
+
+def close_matches(candidates, creators):
+    """Creators an invoice's name plausibly is, when no exact name matched.
+
+    Same surname and a fitting first name (a nickname, a short form, a
+    middle name in between); a surname given as an initial ("Juno W"); or,
+    for creators on file by first name only, the invoice's surname in one of
+    their addresses (alyssa + trask@…) or a first name nobody else has.
+    Shown as "close name — check it": Erin confirms in the preview.
+    """
+    firsts = {}
+    for c in creators:
+        t = _tokens(c.name)
+        if t:
+            firsts.setdefault(t[0], []).append(c)
+    hits = []
+    for c in creators:
+        t = _tokens(c.name)
+        if not t:
+            continue
+        for first, last in candidates:
+            if not _first_fits(t[0], first):
+                continue
+            if len(t) > 1 and last:
+                surname = t[-1]
+                if surname == last or (len(surname) == 1 and last.startswith(surname)):
+                    hits.append(c)
+                    break
+            elif len(t) == 1:
+                addresses_ = [c.email or ""] + [e.address for e in c.emails]
+                if last and len(last) >= 4 and any(last in (a or "").lower() for a in addresses_):
+                    hits.append(c)
+                    break
+                fitting = [x for x in creators if _tokens(x.name)
+                           and _first_fits(_tokens(x.name)[0], first)]
+                if fitting == [c]:
+                    hits.append(c)
+                    break
+    seen, out = set(), []
+    for c in hits:
+        if c.id not in seen:
+            seen.add(c.id)
+            out.append(c)
+    return out
+
+
 def match(text, filename, fields, creators, holders):
     """(creator, how) or (None, why)."""
     ids = set()
@@ -295,6 +393,11 @@ def match(text, filename, fields, creators, holders):
         return named[0], "file name"
     if len(hits) > 1 or len(named) > 1:
         return None, "the name fits more than one creator"
+    close = close_matches(people(fields.get("payee_name"), filename), creators)
+    if len(close) == 1:
+        return close[0], "close name — check it"
+    if len(close) > 1:
+        return None, "close to more than one creator: " + ", ".join(sorted(c.name for c in close))
     return None, ("no creator matches — rename the file to include their full name as it "
                   "is in creatorwise, or add them as a creator first")
 
@@ -304,19 +407,34 @@ def match(text, filename, fields, creators, holders):
 def plan(files, creators, holders, read=read_invoice):
     """One entry per file: creator, how, fields to write, problems."""
     from payments import routing_ok
-    out = []
+    out, texts = [], {}
+    for path in files:
+        try:
+            texts[path] = read(path)
+        except Exception as error:   # a broken file shouldn't stop the others
+            texts[path] = error
+    # The invoices' own "bill to" (Readwise's address) is on every one of
+    # them: an address on three or more different files is that, not theirs.
+    counts = {}
+    for text in texts.values():
+        if isinstance(text, str):
+            for a in set(addresses(text)):
+                counts[a] = counts.get(a, 0) + 1
+    shared = {a for a, n in counts.items() if n >= 3}
+
     for path in files:
         entry = {"file": path, "creator": None, "how": None, "fields": {}, "problems": []}
         out.append(entry)
-        try:
-            text = read(path)
-        except Exception as error:   # a broken PDF shouldn't stop the others
-            entry["problems"].append(f"couldn't read it ({error})")
+        text = texts[path]
+        if isinstance(text, Exception):
+            entry["problems"].append(f"couldn't read it ({text})")
             continue
         if not text.strip():
             entry["problems"].append("no text found in it")
             continue
         fields = parse(text)
+        own = [a for a in fields.pop("addresses", []) if a not in shared]
+        fields["address"] = own[0] if own else None
         account = re.sub(r"[\s-]", "", fields["account_number"] or "")
         routing = re.sub(r"[\s-]", "", fields["routing_number"] or "")
         if account and not re.fullmatch(r"\d{4,17}", account):

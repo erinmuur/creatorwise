@@ -49,8 +49,12 @@ def reader():
     return BINARY
 
 
-def pdf_text(path):
-    done = subprocess.run([reader(), path], capture_output=True, text=True)
+def pdf_text(path, timeout=120):
+    try:
+        done = subprocess.run([reader(), path], capture_output=True, text=True,
+                              timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise ValueError(f"reading it took over {timeout}s — enter this one by hand")
     if done.returncode != 0:
         raise ValueError(done.stderr.strip() or "couldn't read the PDF")
     return done.stdout
@@ -314,9 +318,12 @@ def main(argv=None):
         print("No PDFs found there.")
         return 1
 
+    import logging
+    logging.disable(logging.WARNING)   # the app's "scanner dormant" notice isn't news here
     import app as appmod
     from models import Creator, db
     from tools.content_requests import address_holders
+    logging.disable(logging.NOTSET)
     with appmod.app.app_context():
         creators = Creator.query.all()
         entries = plan(files, creators, address_holders(creators))

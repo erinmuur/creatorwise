@@ -158,6 +158,18 @@ class RealPdfTests(unittest.TestCase):
             self.assertEqual(f["account_number"], ACCOUNT)
             self.assertEqual(f["routing_number"], ROUTING)
             self.assertEqual(f["bank_name"], "Example Bank")
+
+            # The same invoice as a scan: no text layer, so it goes through
+            # Vision — which once deadlocked when run on the main thread.
+            png = os.path.join(folder, "page.png")
+            scan = os.path.join(folder, "scan.pdf")
+            subprocess.run(["sips", "-s", "format", "png", pdf, "--out", png],
+                           capture_output=True, check=True)
+            subprocess.run(["sips", "-s", "format", "pdf", png, "--out", scan],
+                           capture_output=True, check=True)
+            f = ii.parse(ii.pdf_text(scan, timeout=90))
+            self.assertEqual(f["account_number"], ACCOUNT)
+            self.assertEqual(f["routing_number"], ROUTING)
         finally:
             shutil.rmtree(folder)
 

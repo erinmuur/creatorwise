@@ -20,30 +20,57 @@ guard let document = PDFDocument(url: url) else {
     exit(1)
 }
 
-func recognise(_ page: PDFPage) -> String {
+/// The page drawn onto opaque white at ~216 dpi (small print on invoices
+/// needs it). Drawing it ourselves, rather than taking PDFKit's thumbnail,
+/// avoids transparent backgrounds.
+func render(_ page: PDFPage, scale: CGFloat = 3) -> CGImage? {
     let box = page.bounds(for: .mediaBox)
-    let scale: CGFloat = 3    // ~216 dpi: small print on invoices needs it
-    let size = NSSize(width: box.width * scale, height: box.height * scale)
-    let image = page.thumbnail(of: size, for: .mediaBox)
-    guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return "" }
-    let request = VNRecognizeTextRequest()
-    request.recognitionLevel = .accurate
-    request.usesLanguageCorrection = false   // numbers must come through as written
-    do {
-        try VNImageRequestHandler(cgImage: cg, options: [:]).perform([request])
-    } catch {
-        return ""
-    }
-    return (request.results ?? [])
-        .sorted { $0.boundingBox.origin.y > $1.boundingBox.origin.y }
-        .compactMap { $0.topCandidates(1).first?.string }
-        .joined(separator: "\n")
+    let w = Int(box.width * scale), h = Int(box.height * scale)
+    guard w > 0, h > 0, let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+    ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+    ctx.scaleBy(x: scale, y: scale)
+    page.draw(with: .mediaBox, to: ctx)
+    return ctx.makeImage()
+}
+
+/// Vision's text recognition, given `seconds` to finish. Its accurate mode
+/// was seen to hang — no CPU, never returning — on a nearly blank invoice
+/// page (2026-11-19), so it runs on its own thread and is abandoned on time.
+func vision(_ image: CGImage, _ level: VNRequestTextRecognitionLevel, seconds: Double) -> String? {
+    var lines: [String]? = nil
+    let done = DispatchSemaphore(value: 0)
+    Thread {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = level
+        request.usesLanguageCorrection = false   // numbers must come through as written
+        if (try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])) != nil {
+            lines = (request.results ?? [])
+                .sorted { $0.boundingBox.origin.y > $1.boundingBox.origin.y }
+                .compactMap { $0.topCandidates(1).first?.string }
+        }
+        done.signal()
+    }.start()
+    if done.wait(timeout: .now() + seconds) == .timedOut { return nil }
+    return lines?.joined(separator: "\n") ?? ""
+}
+
+func recognise(_ page: PDFPage, number: Int) -> String {
+    guard let image = render(page) else { return "" }
+    if let text = vision(image, .accurate, seconds: 25) { return text }
+    FileHandle.standardError.write("page \(number): accurate text recognition timed out; using fast\n"
+        .data(using: .utf8)!)
+    return vision(image, .fast, seconds: 25) ?? ""
 }
 
 var pages: [String] = []
 for i in 0..<document.pageCount {
     guard let page = document.page(at: i) else { continue }
     let text = page.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    pages.append(text.isEmpty ? recognise(page) : text)
+    pages.append(text.isEmpty ? recognise(page, number: i + 1) : text)
 }
 print(pages.joined(separator: "\n\n"))
+exit(0)   // don't wait on a recognition thread that never returned

@@ -33,6 +33,8 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `tools/transcribe_media.py` | local Whisper transcripts; Vision OCR for slides |
 | `datasync.py` | token-guarded upload endpoints for `data/` (see below) |
 | `payments.py` | creators' payment details: form checks, and merging live-site edits back |
+| `tools/import_invoices.py` | Erin runs it: payment details from creators' PDF invoices (masked preview, `--apply`) |
+| `tools/pdf_text.swift` | PDF text via PDFKit, Vision for scanned pages; built by import_invoices.py |
 | `tools/push_data.py` | send the local DB, media and photos to the server |
 | `tools/refresh_followers.py` | worklist of handles; load follower readings with history |
 | `tools/fetch_youtube_followers.py` | subscriber counts from the YouTube Data API |
@@ -838,7 +840,14 @@ password. So, always:
 - Never log, export, print or email them. Errors name the field, not the
   value. The profile shows the account masked (••••1234); the full number is
   only in the edit form. Drafted payment emails must never include them.
-- Claude never types a creator's bank numbers in; Erin does, in the form.
+- Claude never types a creator's bank numbers in; Erin does — in the form,
+  or by running `tools/import_invoices.py <folder of PDFs>` herself, which
+  reads invoices locally (PDFKit, Vision for scans), matches each to one
+  creator (an address they hold, then exact full name, then full name in
+  the file name; otherwise held), previews with account and routing
+  masked, and saves only with `--apply`. Fields an invoice doesn't state
+  are left as they were; a routing number failing the checksum is left out.
+  Claude tested it on invented invoices only and doesn't run it on real ones.
 - The form posts with a per-session CSRF token (`csrf_token()`).
 - Routing numbers are checked against the ABA checksum; account numbers
   must be 4–17 digits. Blank fields are fine — details arrive piecemeal.

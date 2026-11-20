@@ -8,9 +8,18 @@ line saying whose it is and which campaign it's for:
 
 A scheduled Claude task on her Mac (`creatorwise-content`, in the desktop
 app's Scheduled list) picks the mail up, adds the piece, saves its media,
-transcribes it, titles it and pushes the database to the live site. It
-replies with nothing; the run's summary is in the task's history, and
-`data/content-requests.log` has a line per run.
+transcribes it, titles it and pushes the database to the live site.
+
+**It replies only when Erin has to act** — something held, a reel waiting to
+be recorded, an attachment too big, a post it couldn't open, a failed push —
+in the thread of her own email, to her plain address (never the tagged one,
+never anyone else). Clean runs stay silent. Every reply starts with the line
+`[creatorwise job]`, and the tool skips any message carrying it, and any
+message in the thread not sent to the tagged address: the job reads whole
+threads, so without that its own reply would come back as a new request
+from Erin and be answered in a loop. A correction is a new email (or a
+reply addressed to the tagged address). The run's full summary is in the
+task's history; `data/content-requests.log` has a line per run.
 
 ## Why it runs on the Mac, not the server
 

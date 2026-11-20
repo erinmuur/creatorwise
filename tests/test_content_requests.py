@@ -152,6 +152,22 @@ class PlanTests(unittest.TestCase):
                                          frm="stranger@example.com"))
         self.assertEqual((results, len(ignored)), ([], 1))
 
+    def test_the_jobs_own_reply_is_never_a_request(self):
+        reply = msg(f"{cr.JOB_MARK}\nHeld: no campaign named.", id="r1")
+        results, ignored = self.plan(reply)
+        self.assertEqual(results, [])
+        self.assertEqual(ignored[0][1], "the job's own reply")
+
+    def test_thread_mail_not_sent_to_the_tag_is_skipped(self):
+        url = "https://www.instagram.com/reel/AbC123/"
+        m = msg(f"Bea for the Announcement {url}")
+        m["to"] = ["me@example.com"]
+        results, ignored = self.plan(m, links={url: {"author": "bea.lune"}})
+        self.assertEqual((results, ignored[0][1]), ([], "not sent to the tagged address"))
+        m["to"] = ["me+creatorwise@example.com"]
+        results, _ = self.plan(m, links={url: {"author": "bea.lune"}})
+        self.assertEqual(len(results), 1)
+
     def test_a_post_already_on_file_is_not_added_twice(self):
         piece = UgcPiece(creator_id=self.bea.id, campaign_id=self.ann.id)
         db.session.add(piece)

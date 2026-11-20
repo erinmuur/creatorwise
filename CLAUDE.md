@@ -806,6 +806,11 @@ guide: `docs/content-by-email.md`.
 - Recording is capture of what the pane shows, like the carousel
   screenshots — Erin's call, 2026-11-19, after a script that pulled files
   from Instagram's internal API was declined. Keep it that way.
+- It replies in the email's thread, to Erin's plain address, only when she
+  has to act (held, waiting to record, too big, failed push). Replies start
+  with `[creatorwise job]` and the tool skips that marker and anything not
+  sent to the tagged address — otherwise its own replies, which sit in the
+  same threads from the same sender, would loop.
 - Processed mail ids live in `data/content-requests.json`; a line per run in
   `data/content-requests.log`.
 - First run, 2026-11-19: piece 201 (new, with Erin's file) and an Instagram

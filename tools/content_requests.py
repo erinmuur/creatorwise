@@ -206,16 +206,34 @@ def save_state(data_dir, state):
     os.replace(tmp, path)
 
 
+# The job answers held emails by replying in their thread. Those replies sit
+# in the same thread, from the same sender, so they carry this line and go to
+# the untagged address — and are never read as a request themselves.
+JOB_MARK = "[creatorwise job]"
+TAG = "+creatorwise@"
+
+
 def pending_messages(payload, sender, state):
-    """(to_handle, ignored): unprocessed mail from the sender, oldest first."""
+    """(to_handle, ignored): unprocessed mail from the sender, oldest first.
+
+    `ignored` holds (message, why). Mail from anyone else, the job's own
+    replies, and anything in a thread not addressed to the tagged address
+    (when the task passed "to") are skipped, and remembered as skipped.
+    """
     sender = sender.strip().lower()
     todo, ignored = [], []
     for m in sorted(payload.get("messages", []), key=lambda m: m.get("date") or ""):
         if m.get("id") in state["messages"]:
             continue
         frm = re.search(r"[\w.+-]+@[\w.-]+", (m.get("from") or "").lower())
-        if not frm or frm.group(0) != sender:
-            ignored.append(m)
+        to = " ".join(m.get("to") or []).lower() if isinstance(m.get("to"), list) \
+            else (m.get("to") or "").lower()
+        if JOB_MARK in (m.get("body") or "") or JOB_MARK in (m.get("subject") or ""):
+            ignored.append((m, "the job's own reply"))
+        elif not frm or frm.group(0) != sender:
+            ignored.append((m, "not from the sender"))
+        elif m.get("to") is not None and TAG not in to:
+            ignored.append((m, "not sent to the tagged address"))
         else:
             todo.append(m)
     return todo, ignored
@@ -461,8 +479,8 @@ def record_processed(data_dir, results, ignored, state):
             "on": stamp,
             "pieces": [p.get("piece") for p in entry["pieces"]],
             "held": [h["reason"] for h in entry["held"]]}
-    for m in ignored:
-        state["messages"][m.get("id")] = {"on": stamp, "ignored": "not from the sender"}
+    for m, why in ignored:
+        state["messages"][m.get("id")] = {"on": stamp, "ignored": why}
     save_state(data_dir, state)
     added = sum(1 for e in results for p in e["pieces"] if p["action"] != "already on file")
     held = sum(len(e["held"]) for e in results)
@@ -571,7 +589,8 @@ def render(results, ignored):
         if e.get("attachments_unused"):
             out.append("  attachments not used: more than one new piece in this email")
     if ignored:
-        out.append(f"Ignored {len(ignored)} email(s) not from the sender.")
+        reasons = sorted({why for _, why in ignored})
+        out.append(f"Skipped {len(ignored)} message(s): " + "; ".join(reasons) + ".")
     if not results and not ignored:
         out.append("No new emails.")
     return "\n".join(out)

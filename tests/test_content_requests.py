@@ -77,6 +77,13 @@ class PureTests(unittest.TestCase):
                          "“I read forty books this month and here is how I tracked them”")
         self.assertIsNone(cr.pick_title("[No speech — music only]\n\nOn-screen text:\nshort"))
 
+    def test_a_series_intro_already_used_is_skipped(self):
+        text = ("I'm making it my mission to read more books this month.\n"
+                "Today's day 15 of my thirty day reading challenge.")
+        used = ["“I'm making it my mission to read more books this month”"]
+        self.assertEqual(cr.pick_title(text, avoid=used),
+                         "“Today's day 15 of my thirty day reading challenge”")
+
 
 class PlanTests(unittest.TestCase):
     def setUp(self):

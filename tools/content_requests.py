@@ -719,7 +719,7 @@ def sentences(text):
     return out
 
 
-def pick_title(transcript):
+def pick_title(transcript, avoid=()):
     """A phrase lifted verbatim from the transcript, in curly quotes.
 
     The hand-picked titles were a line that says what the video is about. The
@@ -727,8 +727,10 @@ def pick_title(transcript):
     isn't a greeting. None when there is nothing usable — the card then keeps
     its platform label, as before.
     """
+    taken = {t.strip("“”").rstrip(" .,;:—-").casefold() for t in avoid if t}
     fit = [s for s in sentences(transcript)[:12]
-           if 6 <= len(s.split()) <= 18 and not _GREETING.match(s)]
+           if 6 <= len(s.split()) <= 18 and not _GREETING.match(s)
+           and s.rstrip(" .,;:—-").casefold() not in taken]
     if not fit:
         return None
     # Prefer an early line about the subject over scene-setting.
@@ -747,7 +749,10 @@ def finish(piece_ids, models, media_root):
         path = os.path.join(media_root, str(pid), "transcript.txt")
         transcript = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
         if not piece.title:
-            piece.title = pick_title(transcript)
+            # A series repeats its intro in every episode: a line already
+            # titling another of this creator's pieces doesn't tell them apart.
+            others = [p.title for p in piece.creator.all_pieces if p.id != piece.id]
+            piece.title = pick_title(transcript, avoid=others)
         has = sorted(n for n in os.listdir(os.path.join(media_root, str(pid)))) \
             if os.path.isdir(os.path.join(media_root, str(pid))) else []
         media = ("video" if "video.mp4" in has

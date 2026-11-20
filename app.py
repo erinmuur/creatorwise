@@ -13,6 +13,7 @@ from flask import (
 
 from models import (
     FOLLOW_UP_ORDER,
+    sum_known,
     Payment,
     PLATFORMS,
     PLATFORM_LABELS,
@@ -237,8 +238,8 @@ def index():
             if len(windows) == 1
             else f"across {len(windows)} campaign windows" if windows else None
         ),
-        "engagement": sum(p.engagement for p in pieces),
-        "views": sum(p.views for p in pieces),
+        "engagement": sum_known(p.engagement for p in pieces),
+        "views": sum_known(p.views for p in pieces),
     }
     return render_template(
         "index.html",
@@ -327,7 +328,7 @@ def creators():
     keys = {
         "name": lambda c: c.name.lower(),
         "referrals": lambda c: -c.total_referrals,
-        "engagement": lambda c: -c.total_engagement,
+        "engagement": lambda c: -(c.total_engagement or 0),
         "followers": lambda c: -c.follower_count,
         "delivered": lambda c: -c.delivered_count,
     }

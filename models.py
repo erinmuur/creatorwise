@@ -118,6 +118,14 @@ DISCOVERY_LABELS = {
 }
 
 
+def sum_known(values):
+    """Sum what was measured; None if nothing was. A post nobody has checked
+    is unknown, not zero (CLAUDE.md: a zero that looks like a measurement is
+    worse than a blank)."""
+    known = [v for v in values if v is not None]
+    return sum(known) if known else None
+
+
 class Creator(db.Model):
     __tablename__ = "creators"
 
@@ -298,7 +306,7 @@ class Creator(db.Model):
 
     @property
     def total_engagement(self):
-        return sum(p.engagement for p in self.all_pieces)
+        return sum_known(p.engagement for p in self.all_pieces)
 
     @property
     def follower_count(self):
@@ -604,7 +612,7 @@ class Campaign(db.Model):
 
     @property
     def total_engagement(self):
-        return sum(p.engagement for p in self.ugc)
+        return sum_known(p.engagement for p in self.ugc)
 
     @property
     def status_counts(self):
@@ -795,21 +803,27 @@ class UgcPiece(db.Model):
         return f"{where} post, {when}" if when else f"{where} post"
 
     @property
+    def measured_posts(self):
+        return [p for p in self.posts if p.measured_at]
+
+    @property
     def likes(self):
-        return sum(p.likes or 0 for p in self.posts)
+        return sum_known(p.likes for p in self.measured_posts)
 
     @property
     def comments(self):
-        return sum(p.comments or 0 for p in self.posts)
+        return sum_known(p.comments for p in self.measured_posts)
 
     @property
     def views(self):
-        return sum(p.views or 0 for p in self.posts)
+        """Views where a platform shows them (TikTok, YouTube) — Instagram's
+        website doesn't, so a cross-posted piece's views are its TikTok's."""
+        return sum_known(p.views for p in self.measured_posts)
 
     @property
     def engagement(self):
-        """Likes + comments, summed across every platform this ran on."""
-        return self.likes + self.comments
+        """Likes + comments, summed across every measured platform."""
+        return sum_known(p.engagement for p in self.measured_posts)
 
     @property
     def platforms(self):
@@ -874,9 +888,12 @@ class UgcPiece(db.Model):
 
     @property
     def engagement_rate(self):
-        if not self.views:
+        """Over the posts that have views only: Instagram likes over TikTok
+        views would overstate it."""
+        viewed = [p for p in self.measured_posts if p.views]
+        if not viewed:
             return None
-        return round(100 * self.engagement / self.views, 1)
+        return round(100 * sum(p.engagement or 0 for p in viewed) / sum(p.views for p in viewed), 1)
 
     def post_for(self, platform):
         for p in self.posts:
@@ -922,11 +939,12 @@ class PlatformPost(db.Model):
     url = db.Column(db.String(512))
     posted_on = db.Column(db.Date)
 
-    views = db.Column(db.Integer, default=0)
-    likes = db.Column(db.Integer, default=0)
-    comments = db.Column(db.Integer, default=0)
-    shares = db.Column(db.Integer, default=0)
-    saves = db.Column(db.Integer, default=0)
+    # None until measured (measured_at set): unknown is not zero.
+    views = db.Column(db.Integer)
+    likes = db.Column(db.Integer)
+    comments = db.Column(db.Integer)
+    shares = db.Column(db.Integer)
+    saves = db.Column(db.Integer)
 
     measured_at = db.Column(db.Date)
 
@@ -938,13 +956,33 @@ class PlatformPost(db.Model):
 
     @property
     def engagement(self):
+        if not self.measured_at:
+            return None
         return (self.likes or 0) + (self.comments or 0)
 
     @property
     def engagement_rate(self):
-        if not self.views:
+        if not self.views or self.engagement is None:
             return None
         return round(100 * self.engagement / self.views, 1)
+
+
+class PostSnapshot(db.Model):
+    """One reading of a post's numbers, so they can be followed over time;
+    PlatformPost holds the latest. Written by tools/refresh_engagement.py.
+    A metric a platform doesn't show (Instagram views on the web) is None."""
+
+    __tablename__ = "post_snapshots"
+
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey("platform_posts.id"), nullable=False, index=True)
+    measured_at = db.Column(db.Date, nullable=False)
+    views = db.Column(db.Integer)
+    likes = db.Column(db.Integer)
+    comments = db.Column(db.Integer)
+    shares = db.Column(db.Integer)
+    saves = db.Column(db.Integer)
+    source = db.Column(db.String(160))
 
 
 class PaymentDetails(db.Model):

@@ -419,7 +419,7 @@ class PlanTests(unittest.TestCase):
     def test_no_engagement_numbers_are_invented(self):
         ci.apply(self.plan())
         for post in PlatformPost.query.all():
-            self.assertEqual((post.views, post.likes, post.comments), (0, 0, 0))
+            self.assertEqual((post.views, post.likes, post.comments), (None, None, None))   # unknown, not zero
         for piece in UgcPiece.query.all():
             self.assertEqual(piece.referrals, 0)
 

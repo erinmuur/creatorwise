@@ -39,8 +39,9 @@ class CollaboratorTests(unittest.TestCase):
         self.piece = UgcPiece(creator_id=self.pax.id, campaign_id=self.campaign.id)
         db.session.add(self.piece)
         db.session.flush()
+        from datetime import date
         db.session.add(PlatformPost(ugc_piece_id=self.piece.id, platform="tiktok",
-                                    likes=40, comments=10))
+                                    likes=40, comments=10, measured_at=date(2026, 11, 20)))
         db.session.add(PieceCollaborator(ugc_piece_id=self.piece.id,
                                          creator_id=self.juno.id))
         for creator in (self.pax, self.juno):

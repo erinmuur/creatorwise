@@ -401,8 +401,9 @@ per-piece measurement if attribution ever gets that precise.
   contextone `query_readwise`, saves the result and loads it with `--load
   --apply`. The app itself still has no production access — that is why this
   isn't a thread in the web process like the mail scanner. It only runs while
-  the desktop app is open (a missed run happens on next launch), and it
-  refreshes the **local** database, which is where the real data lives.
+  the desktop app is open (a missed run happens on next launch). It
+  refreshes the **local** database, which is where the real data lives,
+  then uploads it with `tools/push_data.py` (since 2026-11-19).
 - Every campaign is counted over its own window: `starts_on` to `ends_on`,
   or to today while running; no end date means always to today. A campaign
   with no `starts_on` is skipped and reported.
@@ -876,8 +877,8 @@ and server-only files are removed only with `--prune`.
 - A replacement database must pass `integrity_check` and contain the
   creatorwise tables, and is copied in with SQLite's backup API so the other
   gunicorn worker's open handle stays valid.
-- Re-run it after anything changes local data — imports, merges, and the
-  daily referral refresh, which updates only the local database.
+- Re-run it after anything changes local data by hand — imports, merges.
+  The two scheduled jobs (referrals, content by email) upload on their own.
 
 ## Adding a model
 

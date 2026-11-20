@@ -59,7 +59,7 @@
         </div>
         <div class="stat">
           <div class="stat-label">Likes</div>
-          <div class="stat-value">{{ piece.likes | compact }}</div>
+          <div class="stat-value">{% if piece.likes_hidden %}<span title="The creator hides the like count on this post">Hidden</span>{% else %}{{ piece.likes | compact }}{% endif %}</div>
         </div>
         <div class="stat">
           <div class="stat-label">Comments</div>
@@ -85,9 +85,13 @@
               {% if post.url %}<a href="{{ post.url }}">{{ post.platform_label }}</a>{% else %}{{ post.platform_label }}{% endif %}
             </div>
             <div class="row-sub">
+              {% if post.read_status == 'unavailable' %}No longer available — removed, archived or made private
+              {% elif post.likes_hidden %}Likes hidden by the creator
+              {% else %}
               {% if post.platform != 'instagram' or post.views %}{{ post.views | compact }} views · {% endif %}
               {{ post.likes | compact }} likes ·
               {{ post.comments | compact }} comments
+              {% endif %}
               {% if post.engagement_rate is not none %}· {{ post.engagement_rate }}% eng{% endif %}
             </div>
             <div class="bar-track">

@@ -12,8 +12,10 @@ and loaded here:
 
 readings.json: {"<post id>": {"views": 1234, "likes": 56, "comments": 7,
 "shares": 1, "saves": 3}} — a metric the page doesn't show is left out
-(Instagram's website shows no views), never written as 0. A post that
-couldn't be read is {"status": "unavailable"} and stays unmeasured.
+(Instagram's website shows no views), never written as 0. A reading with
+no numbers says why — {"status": "likes_hidden"} (the creator hides the
+count) or {"status": "unavailable"} (gone or private) — and is kept as a
+snapshot so the page can say so; the post itself stays unmeasured.
 
 Each reading is kept as a PostSnapshot; the post holds the latest.
 Dry run unless --apply.
@@ -28,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 METRICS = ("views", "likes", "comments", "shares", "saves")
 LOG_NAME = "engagement-refreshes.log"
+STATUSES = ("likes_hidden", "unavailable")
 
 
 def parse_count(value):
@@ -56,8 +59,9 @@ def plan(readings, posts_by_id):
         if post is None:
             out.append((None, None, f"no post {key}"))
             continue
-        if (reading or {}).get("status") == "unavailable":
-            out.append((post, None, "unavailable"))
+        status = (reading or {}).get("status")
+        if status in STATUSES:
+            out.append((post, None, status))
             continue
         values = {m: parse_count(reading.get(m)) for m in METRICS}
         if all(v is None for v in values.values()):
@@ -105,10 +109,16 @@ def main(argv=None):
         posts = {p.id: p for p in PlatformPost.query.all()}
         result = plan(readings, posts)
         ok = [(p, v) for p, v, problem in result if v]
+        noted = [(p, problem) for p, v, problem in result if problem in STATUSES]
         for post, values, problem in result:
-            if problem:
+            if problem and problem not in STATUSES:
                 print(f"  skipped {post.id if post else '?'}: {problem}")
-        print(f"{len(ok)} post(s) with numbers; {len(result) - len(ok)} skipped.")
+        for status in STATUSES:
+            ids = [p.id for p, s in noted if s == status]
+            if ids:
+                print(f"  {status}: {len(ids)} post(s) {ids}")
+        skipped = len(result) - len(ok) - len(noted)
+        print(f"{len(ok)} post(s) with numbers, {len(noted)} noted without; {skipped} skipped.")
         if not args.apply:
             print("(dry run — nothing written. Re-run with --apply.)")
             return 0
@@ -118,10 +128,13 @@ def main(argv=None):
             post.measured_at = today
             db.session.add(PostSnapshot(post_id=post.id, measured_at=today, source=args.source,
                                         **values))
+        for post, status in noted:
+            db.session.add(PostSnapshot(post_id=post.id, measured_at=today, source=args.source,
+                                        status=status))
         db.session.commit()
         data_dir = media.data_dir(appmod.app.config["SQLALCHEMY_DATABASE_URI"])
         with open(os.path.join(data_dir, LOG_NAME), "a") as log:
-            log.write(f"{today} posts={len(ok)} skipped={len(result) - len(ok)} "
+            log.write(f"{today} posts={len(ok)} noted={len(noted)} skipped={skipped} "
                       f"source={args.source}\n")
         print(f"-> {len(ok)} post(s) updated")
     return 0

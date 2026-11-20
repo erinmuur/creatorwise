@@ -811,6 +811,16 @@ class UgcPiece(db.Model):
         return sum_known(p.likes for p in self.measured_posts)
 
     @property
+    def likes_hidden(self):
+        """No like count anywhere because the creator hides it."""
+        return self.likes is None and any(p.likes_hidden for p in self.posts)
+
+    @property
+    def unavailable(self):
+        """Every link on this piece is gone or private."""
+        return bool(self.posts) and all(p.read_status == "unavailable" for p in self.posts)
+
+    @property
     def comments(self):
         return sum_known(p.comments for p in self.measured_posts)
 
@@ -949,6 +959,21 @@ class PlatformPost(db.Model):
     measured_at = db.Column(db.Date)
 
     piece = db.relationship("UgcPiece", back_populates="posts")
+    snapshots = db.relationship("PostSnapshot", order_by="PostSnapshot.id",
+                                cascade="all, delete-orphan")
+
+    @property
+    def read_status(self):
+        """What the latest reading found when it had no numbers:
+        'likes_hidden' (the creator hides the count) or 'unavailable'
+        (the post is gone or private). None after a reading with numbers."""
+        if not self.snapshots:
+            return None
+        return max(self.snapshots, key=lambda s: (s.measured_at, s.id or 0)).status
+
+    @property
+    def likes_hidden(self):
+        return self.read_status == "likes_hidden"
 
     @property
     def platform_label(self):
@@ -970,7 +995,9 @@ class PlatformPost(db.Model):
 class PostSnapshot(db.Model):
     """One reading of a post's numbers, so they can be followed over time;
     PlatformPost holds the latest. Written by tools/refresh_engagement.py.
-    A metric a platform doesn't show (Instagram views on the web) is None."""
+    A metric a platform doesn't show (Instagram views on the web) is None.
+    A reading with no numbers says why in `status`: 'likes_hidden' or
+    'unavailable' — the post keeps no values and stays unmeasured."""
 
     __tablename__ = "post_snapshots"
 
@@ -982,6 +1009,7 @@ class PostSnapshot(db.Model):
     comments = db.Column(db.Integer)
     shares = db.Column(db.Integer)
     saves = db.Column(db.Integer)
+    status = db.Column(db.String(16))
     source = db.Column(db.String(160))
 
 

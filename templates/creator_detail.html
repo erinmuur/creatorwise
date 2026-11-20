@@ -103,7 +103,9 @@
           <p class="ugc-creator">{{ p.campaign.name }} · {{ p.platform_summary }}{% if p.posted_on %} · {{ p.posted_on | shortdate }}{% endif %}</p>
           <div class="ugc-stats">
             <span title="{{ p.byline }}'s referrals for the whole campaign, not this video's"><b>{{ (p.creator_referrals | thousands) if p.creator_referrals is not none else "—" }}</b> creator ref</span>
-            <span><b>{{ p.likes | compact }}</b> likes</span>
+            {% if p.unavailable %}<span>Post taken down</span>
+            {% elif p.likes_hidden %}<span>Likes hidden</span>
+            {% else %}<span><b>{{ p.likes | compact }}</b> likes</span>{% endif %}
           </div>
         </a>
         {% else %}

@@ -798,11 +798,17 @@ record an Instagram reel as it plays in the browser pane), then the usual
 `import_media.py`, `transcribe_media.py`, titles and `push_data.py`. Full
 guide: `docs/content-by-email.md`.
 
-- Same rules as the importers: never creates a creator; the handle on the
-  post outranks a first name in the email; no campaign named, or anything
-  ambiguous, is held and reported. Only mail from Erin's own address counts.
-- An attachment always wins; recording is only for emails without a file,
-  and only while the pane is on screen (a hidden pane isn't drawn).
+- Matching: the account on the post, then an address in the email; a
+  first name only when the author couldn't be read. **An author nobody
+  holds is a new creator** (Erin, 2026-11-19), made from the email's
+  address, the posts' accounts and the page's name — never a first-name
+  match to someone on file. A creator's invite code (looked up in Readwise)
+  makes them that creator's referral. Full-name twins, missing address or
+  name, and anything ambiguous are held. Only mail from Erin counts.
+- Recruitment source `organic` (posted unprompted) was added for these.
+- An attachment always wins. Without one (or over Gmail's 12 MB): TikTok's
+  own Download, then recording the Instagram post as a last resort — only
+  while the pane is on screen (a hidden pane isn't drawn).
   Unrecorded pieces wait on `content_requests.py pending`.
 - Recording is capture of what the pane shows, like the carousel
   screenshots — Erin's call, 2026-11-19, after a script that pulled files

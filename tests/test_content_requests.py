@@ -64,6 +64,13 @@ class PureTests(unittest.TestCase):
         self.assertEqual(len(cr.group_links([("tiktok", 1), ("instagram", 2)])), 1)
         self.assertEqual(len(cr.group_links([("tiktok", 1), ("tiktok", 2)])), 2)
 
+    def test_different_lengths_are_different_videos(self):
+        tt, ig = {"duration": 111.0}, {"duration": 127.9}
+        self.assertEqual(len(cr.group_links([("tiktok", tt), ("instagram", ig)])), 2)
+        # ...but a reel cut to Instagram's 3 minutes can be the same video.
+        self.assertEqual(len(cr.group_links([("tiktok", {"duration": 229}),
+                                             ("instagram", {"duration": 176})])), 1)
+
     def test_title_is_a_quoted_sentence_not_a_greeting(self):
         text = "Hi guys, welcome back to my channel.\nI read forty books this month and here is how I tracked them. More stuff."
         self.assertEqual(cr.pick_title(text),
@@ -126,8 +133,7 @@ class PlanTests(unittest.TestCase):
 
     def test_a_first_name_alone_is_held_when_it_fits_two(self):
         url = "https://www.instagram.com/reel/AbC123/"
-        (r,), _ = self.plan(msg(f"Sam's video for the Announcement {url}"),
-                            links={url: {"author": "someone.else"}})
+        (r,), _ = self.plan(msg(f"Sam's video for the Announcement {url}"))
         self.assertEqual(r["pieces"], [])
         self.assertIn("more than one creator", r["held"][0]["reason"])
 
@@ -151,6 +157,76 @@ class PlanTests(unittest.TestCase):
         results, ignored = self.plan(msg(f"for the Announcement {url}",
                                          frm="stranger@example.com"))
         self.assertEqual((results, len(ignored)), ([], 1))
+
+    def test_an_unknown_author_is_a_new_creator_not_a_first_name_match(self):
+        # The email says "Sam", one Sam is on file — but the post's account is
+        # nobody's. That is a new person, not the Sam we have.
+        tt = f"https://www.tiktok.com/@samthereader/video/{TT_ID}"
+        (r,), _ = self.plan(
+            msg(f"An organic plug from a user named Sam (sam.new@example.com) {tt} "
+                "for the Announcement"),
+            links={tt: {"author": "samthereader", "author_name": "Sam Reader 📚 | books",
+                        "kind": "video"}})
+        self.assertEqual(r["held"], [])
+        (p,) = r["pieces"]
+        self.assertIsNone(p["creator"])
+        nc = p["new_creator"]
+        self.assertEqual((nc["name"], nc["email"], nc["source"]),
+                         ("Sam Reader", "sam.new@example.com", "organic"))
+        self.assertEqual(nc["handles"], [{"platform": "tiktok", "handle": "samthereader"}])
+        captures, new = cr.apply([r], MODELS, self.tmp)
+        made = db.session.get(Creator, new[0]["creator"])
+        self.assertEqual(made.email, "sam.new@example.com")
+        self.assertEqual([h.handle for h in made.handles], ["samthereader"])
+        self.assertEqual(db.session.get(UgcPiece, captures[0]["piece"]).creator_id, made.id)
+
+    def test_two_new_posts_by_one_new_person_make_one_creator(self):
+        tt = f"https://www.tiktok.com/@newreader/video/{TT_ID}"
+        ig = "https://www.instagram.com/reel/AbC123/"
+        results, _ = self.plan(
+            msg(f"organic, new.reader@example.com, for the Announcement {tt} {ig}"),
+            links={tt: {"author": "newreader", "author_name": "New Reader", "duration": 111},
+                   ig: {"author": "new.reader", "author_name": "New Reader", "duration": 128}})
+        self.assertEqual(len(results[0]["pieces"]), 2)
+        captures, new = cr.apply(results, MODELS, self.tmp)
+        self.assertEqual(len(new), 1)
+        made = db.session.get(Creator, new[0]["creator"])
+        self.assertEqual(sorted(h.handle for h in made.handles), ["new.reader", "newreader"])
+        self.assertEqual({db.session.get(UgcPiece, c["piece"]).creator_id for c in captures},
+                         {made.id})
+
+    def test_a_new_creator_needs_an_address(self):
+        url = "https://www.instagram.com/reel/AbC123/"
+        (r,), _ = self.plan(msg(f"organic plug for the Announcement {url}"),
+                            links={url: {"author": "stranger", "author_name": "Stranger"}})
+        self.assertIn("send it again with their email address", r["held"][0]["reason"])
+
+    def test_a_full_name_already_on_file_is_held(self):
+        url = "https://www.instagram.com/reel/AbC123/"
+        (r,), _ = self.plan(msg(f"new person x@example.com for the Announcement {url}"),
+                            links={url: {"author": "otheraccount", "author_name": "Sam Vale"}})
+        self.assertIn("already on file", r["held"][0]["reason"])
+
+    def test_an_invite_code_makes_them_a_referral(self):
+        url = "https://www.instagram.com/reel/AbC123/"
+        payload_people = {"new.reader@example.com": {"invited_by": "bea.lune@example.com",
+                                                     "username": "newreader"}}
+        results, _ = cr.plan({"messages": [msg(f"organic, new.reader@example.com, "
+                                                f"for the Announcement {url}")],
+                              "links": {url: {"author": "newreader", "author_name": "New Reader"}},
+                              "people": payload_people}, ME, self.state, MODELS)
+        nc = results[0]["pieces"][0]["new_creator"]
+        self.assertEqual((nc["source"], nc["recruited_by"]), ("referral", self.bea.id))
+
+    def test_an_address_on_file_matches_and_adds_the_account(self):
+        url = "https://www.instagram.com/reel/AbC123/"
+        (r,), _ = self.plan(msg(f"Bea's other account, bea.lune@example.com, for the "
+                                f"Announcement {url}"),
+                            links={url: {"author": "bea.second", "author_name": "Bea"}})
+        (p,) = r["pieces"]
+        self.assertEqual((p["creator"], p["matched_by"]), (self.bea.id, "email"))
+        cr.apply([r], MODELS, self.tmp)
+        self.assertIn("bea.second", [h.handle for h in self.bea.handles])
 
     def test_the_jobs_own_reply_is_never_a_request(self):
         reply = msg(f"{cr.JOB_MARK}\nHeld: no campaign named.", id="r1")
@@ -189,7 +265,7 @@ class PlanTests(unittest.TestCase):
                    ig: {"author": "bea.lune", "kind": "video"}})
         (p,) = results[0]["pieces"]
         self.assertEqual(p["action"], "new piece")
-        captures = cr.apply(results, MODELS, self.tmp)
+        captures, _ = cr.apply(results, MODELS, self.tmp)
         (c,) = captures
         self.assertEqual(c["method"], "tiktok-download")
         self.assertTrue(os.path.isdir(c["folder"]))
@@ -207,7 +283,7 @@ class PlanTests(unittest.TestCase):
         url = "https://www.instagram.com/p/ZZ999/"
         results, _ = self.plan(msg(f"Bea's carousel for the softlaunch {url}"),
                                links={url: {"author": "bea.lune", "kind": "carousel"}})
-        (c,) = cr.apply(results, MODELS, self.tmp)
+        (c,), _ = cr.apply(results, MODELS, self.tmp)
         self.assertEqual(c["method"], "instagram-slides")
         self.assertEqual(results[0]["pieces"][0]["status_change"],
                          "added to the campaign as delivered")

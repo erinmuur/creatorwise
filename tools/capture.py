@@ -303,6 +303,31 @@ def slide(shot, rect, viewport_width, folder, index):
     print(json.dumps({"file": out, "size": [cw, ch]}))
 
 
+def avatar(shot, rect, viewport_width, creator_id):
+    """A new creator's profile photo, cropped from a screenshot of their
+    Instagram or TikTok profile page in the pane — the fallback when their
+    Readwise Books profile has no photo. Capture of the rendered page, like
+    the slides; the image file itself is never fetched."""
+    import app as appmod
+    import avatars
+    x, y, w, h = (float(v) for v in rect.split(","))
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width",
+                        "-of", "csv=p=0", shot], capture_output=True, text=True, check=True)
+    k = int(r.stdout.strip().split(",")[0]) / float(viewport_width)
+    cw, ch, cx, cy = (int(round(v * k)) for v in (w, h, x, y))
+    side = min(cw, ch)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = os.path.join(tmp, "avatar.jpg")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", shot, "-vf",
+                        f"crop={side}:{side}:{cx}:{cy},scale='min(400,iw)':-1",
+                        "-q:v", "2", out], check=True)
+        with open(out, "rb") as handle:
+            content = handle.read()
+    folder = avatars.directory(appmod.app.config["SQLALCHEMY_DATABASE_URI"], create=True)
+    path = avatars.save(folder, creator_id, content)
+    print(json.dumps({"file": path, "size": side}))
+
+
 # --- attachments and transcripts ------------------------------------------------
 
 def attach(folder, files):
@@ -351,6 +376,11 @@ def main(argv=None):
     s.add_argument("--viewport-width", required=True, type=float)
     s.add_argument("--folder", required=True)
     s.add_argument("--index", required=True, type=int)
+    s = sub.add_parser("avatar")
+    s.add_argument("--shot", required=True)
+    s.add_argument("--rect", required=True, help="the profile picture's x,y,w,h in CSS pixels")
+    s.add_argument("--viewport-width", required=True, type=float)
+    s.add_argument("--creator", required=True, type=int)
     s = sub.add_parser("attach")
     s.add_argument("--folder", required=True)
     s.add_argument("files", nargs="+")
@@ -370,6 +400,8 @@ def main(argv=None):
         take_download(a.folder, a.since)
     elif a.cmd == "slide":
         slide(a.shot, a.rect, a.viewport_width, a.folder, a.index)
+    elif a.cmd == "avatar":
+        avatar(a.shot, a.rect, a.viewport_width, a.creator)
     elif a.cmd == "attach":
         attach(a.folder, a.files)
     elif a.cmd == "transcript":

@@ -41,18 +41,36 @@ next launch.
   the tagged address is ignored and logged.
 - **The campaign must be named** ("Announcement", "softlaunch", "organic",
   "stickers"). Not named, or two named: held.
-- **The handle on the post outranks the description.** The task opens each
-  link and reads the author's username; a creator holding that handle on that
-  platform is the match. If the email names somebody else, it is held.
-- With no handle on file, a name in the email is used if it fits exactly
-  one creator (full name, or a first name unique among the campaign's
-  participants). "Sam" alone, with four Sams, is held.
-- A shared account (the duo) needs a name to say which of them.
-- A creator is never created. Somebody new has to be added first.
+- **Who made it, in order:** the account on the post (the task reads the
+  author's username off each page); then an email address written in the
+  email; then — only when the post's author couldn't be read at all — a name
+  in its words, if it fits exactly one creator.
+- **An author nobody holds is a new creator, never a first-name match.** On
+  2026-11-19 an organic plug from a new "Liz" nearly matched the Liz already
+  on file by first name; that path is gone. The new creator is made from the
+  address in the email, the post's accounts (every platform in the email),
+  and the name the task read off the page — "Name (Channel)" when the page
+  shows a channel name. Held instead: no address in the email, two
+  addresses, no readable name, or a creator with the same full name already
+  on file (CLAUDE.md: a new address is usually a second address).
+- **How they joined:** the task looks the address up in Readwise
+  (`bookwise_bookwiseinviteredemption.redeemer_id`). Another creator's
+  invite code makes them a `referral` with `recruited_by` set — a fact,
+  so it wins over the email's words. Otherwise "referred" in the email is a
+  referral (unlinked), "organic"/"unprompted" or an Organic Plugs post is
+  `organic`, and "recruited"/"reached out" is `outbound`.
+- **Profile photo:** their Readwise Books photo when they have one
+  (`tools/fetch_avatars.py`), otherwise a screenshot of their Instagram or
+  TikTok profile picture in the pane (`capture.py avatar`).
+- An address on file with an account that isn't adds that account to them.
+- A shared account (the duo) needs a name or address to say which of them.
 - A post already on file (any URL form of it) is not added again. A new
   link for a piece that exists on another platform becomes its cross-post.
-- One link per platform across several platforms is one cross-posted piece;
-  two links on the same platform are two pieces.
+- One link per platform across several platforms is one cross-posted piece
+  — unless their lengths (read off the pages) differ by more than 2s with
+  the shorter under 175s: then they're two videos (Liz's "Day 15" TikTok and
+  "Day 8" reel). Instagram's 3-minute cut of a longer TikTok stays one
+  piece. Two links on the same platform are two pieces.
 - Emailing a piece is Erin's word that it was delivered: the creator's
   participation becomes `content_delivered`, or is created as such if they
   weren't in the campaign yet. The summary says what changed.
@@ -77,9 +95,9 @@ Every piece is transcribed either way.
 | post | how |
 |---|---|
 | file attached to the email | used as is (Gmail connector, 12 MB limit) |
-| TikTok video | TikTok's own right-click "Download video" |
-| TikTok video with saving off | recorded as it plays, as for a reel |
-| Instagram reel / video | recorded as it plays in the pane |
+| attachment over 12 MB, or none, with a TikTok link | TikTok's own right-click "Download video" |
+| TikTok saving off or signed out, or no TikTok link | the Instagram post recorded as it plays (the last resort); the TikTok page only if there's no Instagram post |
+| none of those possible | left on `pending`, Erin told what's needed |
 | Instagram carousel | a screenshot per slide, stepped with the post's own arrow |
 | TikTok photo post | the same, signed in |
 | YouTube | no video; the transcript from YouTube's "Show transcript" panel |

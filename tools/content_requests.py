@@ -178,14 +178,119 @@ def creators_by_name(text, creators):
     return full, first
 
 
+def same_length(a, b):
+    """Could two posts' videos be one video? Unknown lengths can't rule it
+    out. Instagram cuts at 3 minutes, so a 229s TikTok and a 176s reel can
+    be the same review (piece 017); below that, 2s apart is two videos."""
+    if not a or not b:
+        return True
+    a, b = sorted((float(a), float(b)))
+    return b - a <= 2 or a >= 175
+
+
 def group_links(links):
     """Links -> pieces. One per platform across several platforms is one
-    cross-posted piece; anything else is a piece per link (the importer's
-    rule: two links on one platform are two videos)."""
+    cross-posted piece — unless their lengths (read off the pages) show
+    they're different videos; anything else is a piece per link (the
+    importer's rule: two links on one platform are two videos)."""
     platforms = [p for p, _ in links]
     if len(links) > 1 and len(set(platforms)) == len(platforms):
-        return [links]
+        lengths = [getattr(l, "get", lambda k: None)("duration") for _, l in links]
+        if all(same_length(x, y) for i, x in enumerate(lengths) for y in lengths[i + 1:]):
+            return [links]
     return [[link] for link in links]
+
+
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def emails_in(text, sender):
+    """Addresses written in the email (links already taken out), minus
+    Erin's own and anything at readwise.io."""
+    out = []
+    for a in _EMAIL.findall(text or ""):
+        a = a.lower().strip(".")
+        if a != (sender or "").lower() and not a.endswith("@readwise.io") and a not in out:
+            out.append(a)
+    return out
+
+
+def address_holders(creators):
+    """address -> {creator ids}, primaries and secondaries alike."""
+    out = {}
+    for c in creators:
+        for a in [c.email] + [e.address for e in c.emails]:
+            if a:
+                out.setdefault(a.strip().lower(), set()).add(c.id)
+    return out
+
+
+def clean_name(display):
+    """A profile's display name as a person's name: emoji, pipes and taglines
+    off ("Liz 📚 | BookTok" -> "Liz")."""
+    name = re.split(r"\s[|•·—-]\s|\|", display or "")[0]
+    name = re.sub(r"[^\w\s'’.()-]", " ", name)
+    name = re.sub(r"\s+", " ", name).strip(" .-_'")
+    return name if re.search(r"[A-Za-z]", name) else None
+
+
+_ORGANIC = re.compile(r"\b(organic\w*|unprompted|volunteer\w*|on (?:her|his|their) own)\b", re.I)
+_REFERRED = re.compile(r"\b(referr\w*|referral)\b", re.I)
+_RECRUITED = re.compile(r"\b(recruit\w*|reached out|outreach|we contacted)\b", re.I)
+
+
+def how_they_joined(text, invited_by, holders, by_id, campaign):
+    """(recruitment_source, recruited_by_id, note).
+
+    An invite-code redemption is a fact, so a creator's code wins; then
+    Erin's words; then an Organic Plugs post means organic.
+    """
+    if invited_by:
+        ids = holders.get(invited_by.lower(), set())
+        if len(ids) == 1:
+            cid = next(iter(ids))
+            return "referral", cid, f"joined Readwise Books with {by_id[cid].name}'s invite code"
+    if _REFERRED.search(text or ""):
+        return "referral", None, "the email says referred; no creator's invite code on record"
+    if _ORGANIC.search(text or "") or campaign.slug == "organic-plugs":
+        return "organic", None, "posted unprompted"
+    if _RECRUITED.search(text or ""):
+        return "outbound", None, "recruited, per the email"
+    return None, None, "how they joined isn't in the email"
+
+
+def propose_creator(group, authors, given, text, campaign, payload, creators, holders, by_id):
+    """(new creator dict, None) or (None, why it's held).
+
+    Only for a post whose author no creator holds. Needs their address (in
+    the email) and their name (the profile's display name, read off the page
+    by the task). A full-name twin already on file is held: CLAUDE.md —
+    a new address is usually a second address, not a new person.
+    """
+    if not given:
+        handles = ", ".join(f"@{h}" for _, h in authors)
+        return None, (f"{handles} isn't a creator on file — to add them, send it again with "
+                      "their email address")
+    if len(given) > 1:
+        return None, "more than one address in the email: " + ", ".join(given)
+    email = given[0]
+    info = next((l for l in group if l.get("author_name")), {})
+    name = clean_name(info.get("author_name")) if info else None
+    if not name:
+        return None, "couldn't read their name from the post page"
+    twins = [c for c in creators if c.name.strip().casefold() == name.casefold()]
+    if twins:
+        return None, (f"a creator named {name} is already on file (id {twins[0].id}) — if it's "
+                      "the same person, add this address to them; if not, send their full name")
+    person = (payload.get("people") or {}).get(email) or {}
+    source, by, note = how_they_joined(text, person.get("invited_by"), holders, by_id, campaign)
+    first = {c.id for c in creators if words(c.name)[:1] == words(name)[:1]}
+    return {"name": name, "email": email,
+            "handles": [{"platform": pl, "handle": h} for pl, h in authors],
+            "source": source, "recruited_by": by,
+            "recruited_by_name": by_id[by].name if by else None, "how": note,
+            "books_username": person.get("username"), "thumbnail": person.get("thumbnail"),
+            "same_first_name": sorted(by_id[i].name for i in first)}, None
 
 
 # --- the plan ---------------------------------------------------------------
@@ -271,6 +376,8 @@ def plan(payload, sender, state, models):
     campaigns = Campaign.query.order_by(Campaign.id).all()
     creators = Creator.query.all()
     by_id = {c.id: c for c in creators}
+    holders = address_holders(creators)
+    proposed = {}            # new creators in this run, by address
     existing = existing_posts(PlatformPost)
     todo, ignored = pending_messages(payload, sender, state)
 
@@ -296,7 +403,8 @@ def plan(payload, sender, state, models):
             resolved = info.get("resolved") or url
             links.append({"platform": platform_of(resolved) or platform, "url": url,
                           "store": canonical(resolved), "key": post_key(resolved),
-                          "author": info.get("author"), "kind": info.get("kind"),
+                          "author": info.get("author"), "author_name": info.get("author_name"),
+                          "kind": info.get("kind"), "duration": info.get("duration"),
                           "unavailable": info.get("unavailable")})
 
         participants = {p.creator_id for p in campaign.participations}
@@ -314,16 +422,33 @@ def plan(payload, sender, state, models):
                                       "(a short link that wasn't opened?)", "links": urls})
                 continue
 
-            # Who made it: the handle on the post, then the email's words.
-            handle_ids = set()
+            # Who made it, in order: the account on the post, an address
+            # written in the email, and — only when the post's author couldn't
+            # be read at all — a name in its words. An author we could read
+            # but hold no record of is a new creator, never a first-name match:
+            # that is how a different Liz nearly got somebody's post.
+            handle_ids, authors = set(), []
             for l in group:
                 handle = l["author"] or handle_in(l["store"])
+                if handle and (l["platform"], handle.lower().lstrip("@")) not in authors:
+                    authors.append((l["platform"], handle.lower().lstrip("@")))
                 handle_ids |= creators_by_handle(handle, l["platform"], creators)
+            given = emails_in(text, sender)
+            email_ids = set()
+            for address in given:
+                email_ids |= holders.get(address, set())
             full, first = creators_by_name(text, creators)
             named = full or {i for i in first if i in participants} or first
+            new_creator, add_handles = None, []
             if len(handle_ids) == 1:
                 cid = next(iter(handle_ids))
-                if named and cid not in named and cid not in first:
+                if email_ids and cid not in email_ids:
+                    who = ", ".join(sorted(by_id[i].name for i in email_ids))
+                    entry["held"].append({
+                        "reason": f"the post is by {by_id[cid].name} but the address in the "
+                                  f"email belongs to {who}", "links": urls})
+                    continue
+                if not email_ids and named and cid not in named and cid not in first:
                     who = ", ".join(sorted(by_id[i].name for i in named))
                     entry["held"].append({
                         "reason": f"the post is by {by_id[cid].name} but the email names {who}",
@@ -331,7 +456,7 @@ def plan(payload, sender, state, models):
                     continue
                 matched_by = "handle"
             elif len(handle_ids) > 1:
-                pick = handle_ids & named
+                pick = handle_ids & (email_ids or named)
                 if len(pick) != 1:
                     who = ", ".join(sorted(by_id[i].name for i in handle_ids))
                     entry["held"].append({
@@ -339,17 +464,40 @@ def plan(payload, sender, state, models):
                                   "— name which one", "links": urls})
                     continue
                 cid, matched_by = next(iter(pick)), "handle + name"
+            elif email_ids:
+                if len(email_ids) != 1:
+                    who = ", ".join(sorted(by_id[i].name for i in email_ids))
+                    entry["held"].append({
+                        "reason": f"that address is shared by {who} — say which one",
+                        "links": urls})
+                    continue
+                cid, matched_by = next(iter(email_ids)), "email"
+                # Their profile lacks the account the post came from: add it.
+                add_handles = [{"platform": pl, "handle": h} for pl, h in authors]
+            elif authors:
+                new_creator, why = propose_creator(group, authors, given, text, campaign,
+                                                   payload, creators, holders, by_id)
+                if why:
+                    entry["held"].append({"reason": why, "links": urls})
+                    continue
+                # Two of one new person's posts in a run are one new creator.
+                same = proposed.get(new_creator["email"])
+                if same:
+                    for h in new_creator["handles"]:
+                        if h not in same["handles"]:
+                            same["handles"].append(h)
+                    new_creator = same
+                else:
+                    proposed[new_creator["email"]] = new_creator
+                cid, matched_by = None, "new creator"
             else:
                 if len(named) != 1:
                     if not named:
-                        reason = ("no creator on file has this account, and the email "
-                                  "names nobody we know")
+                        reason = ("couldn't read the post's author, and the email names "
+                                  "nobody we know")
                     else:
                         reason = "the name fits more than one creator: " + ", ".join(
                             sorted(by_id[i].name for i in named))
-                    handles = sorted({l["author"] for l in group if l["author"]})
-                    if handles:
-                        reason += f" (post by @{', @'.join(handles)})"
                     entry["held"].append({"reason": reason, "links": urls})
                     continue
                 cid, matched_by = next(iter(named)), "name only"
@@ -361,6 +509,12 @@ def plan(payload, sender, state, models):
                                         "piece": on_file[0].ugc_piece_id, "links": urls})
                 continue
             target = None
+            if on_file and cid is None:
+                piece = on_file[0].piece
+                entry["held"].append({
+                    "reason": f"part of this is already on file as piece {piece.id}, "
+                              f"credited to {piece.creator.name}", "links": urls})
+                continue
             if on_file:
                 piece = on_file[0].piece
                 if piece.creator_id != cid:
@@ -377,7 +531,9 @@ def plan(payload, sender, state, models):
             dates = [d for d in (tiktok_posted_on(l["store"]) for l in new) if d]
             entry["pieces"].append({
                 "action": "add cross-post" if target else "new piece",
-                "piece": target, "creator": cid, "creator_name": by_id[cid].name,
+                "piece": target, "creator": cid,
+                "creator_name": new_creator["name"] if new_creator else by_id[cid].name,
+                "new_creator": new_creator, "add_handles": add_handles,
                 "matched_by": matched_by, "campaign": campaign.slug,
                 "campaign_name": campaign.name,
                 "posts": [{"platform": l["platform"], "url": l["store"], "kind": l["kind"]}
@@ -409,22 +565,79 @@ def capture_method(posts, has_attachments):
     return "none"
 
 
+PROFILE_URLS = {"instagram": "https://www.instagram.com/{}/",
+                "tiktok": "https://www.tiktok.com/@{}",
+                "youtube": "https://www.youtube.com/@{}"}
+
+
+def profile_url(platform, handle):
+    pattern = PROFILE_URLS.get(platform)
+    return pattern.format(handle) if pattern else None
+
+
+def add_creator(spec, entry, models, today):
+    """A new creator from an email: name, address, the post's accounts, and
+    how they joined. Only reached when no creator holds the address, the
+    handles or the full name (see propose_creator)."""
+    from importer import record_email
+    from models import SocialHandle
+    db, Creator = models["db"], models["Creator"]
+    notes = [f"Added from Erin's email of {entry['date'] or today.isoformat()}."]
+    if spec.get("books_username"):
+        notes.append(f"Readwise Books username {spec['books_username']}.")
+    if spec.get("how"):
+        notes.append(spec["how"][0].upper() + spec["how"][1:] + ".")
+    creator = Creator(name=spec["name"], email=spec["email"], onboarded_on=today,
+                      recruitment_source=spec.get("source"),
+                      recruited_by_id=spec.get("recruited_by"), notes=" ".join(notes))
+    db.session.add(creator)
+    db.session.flush()
+    record_email(creator, spec["email"], is_primary=True, source="content email")
+    for h in spec["handles"]:
+        db.session.add(SocialHandle(creator_id=creator.id, platform=h["platform"],
+                                    handle=h["handle"],
+                                    profile_url=profile_url(h["platform"], h["handle"])))
+    db.session.flush()
+    return creator
+
+
 def apply(results, models, media_inbox_root, today=None):
     """Write the plan. Returns the capture list for the task."""
     from tools import import_media
+    from models import SocialHandle
     db = models["db"]
     Campaign, Creator, UgcPiece = models["Campaign"], models["Creator"], models["UgcPiece"]
     PlatformPost, Participation = models["PlatformPost"], models["Participation"]
     today = today or date.today()
 
     captures = []
+    new_creators = []
+    made = {}
     touched = set()
     for entry in results:
         for p in entry["pieces"]:
             if p["action"] == "already on file":
                 continue
             campaign = Campaign.query.filter_by(slug=p["campaign"]).one()
+            if p.get("new_creator") and p["new_creator"]["email"] in made:
+                p["creator"] = made[p["new_creator"]["email"]].id
+            elif p.get("new_creator"):
+                creator = add_creator(p["new_creator"], entry, models, today)
+                made[creator.email] = creator
+                p["creator"] = creator.id
+                new_creators.append({"creator": creator.id, "name": creator.name,
+                                     "email": creator.email,
+                                     "thumbnail": p["new_creator"].get("thumbnail"),
+                                     "handles": p["new_creator"]["handles"]})
             creator = db.session.get(Creator, p["creator"])
+            for h in p.get("add_handles") or []:
+                if not any(x.platform == h["platform"] and
+                           _norm_handle(x.handle) == _norm_handle(h["handle"])
+                           for x in creator.handles):
+                    db.session.add(SocialHandle(creator_id=creator.id, platform=h["platform"],
+                                                handle=h["handle"],
+                                                profile_url=profile_url(h["platform"], h["handle"])))
+                    p.setdefault("handles_added", []).append(h)
             if p["action"] == "add cross-post":
                 piece = db.session.get(UgcPiece, p["piece"])
             else:
@@ -469,7 +682,7 @@ def apply(results, models, media_inbox_root, today=None):
         base = os.path.join(media_inbox_root, c["campaign"])
         name = next((n for n in os.listdir(base) if import_media.piece_id_of(n) == c["piece"]), None)
         c["folder"] = os.path.join(base, name) if name else None
-    return captures
+    return captures, new_creators
 
 
 def record_processed(data_dir, results, ignored, state):
@@ -573,6 +786,7 @@ def pending(models, media_root, inbox_root):
 
 def render(results, ignored):
     out = []
+    shown = set()
     for e in results:
         out.append(f"Email {e['date'] or ''}: {e['description'][:90]}")
         for p in e["pieces"]:
@@ -580,6 +794,21 @@ def render(results, ignored):
                 out.append(f"  already on file as piece {p['piece']}: {' '.join(p['links'])}")
             else:
                 what = "new piece" if p["action"] == "new piece" else f"cross-post on piece {p['piece']}"
+                nc = p.get("new_creator")
+                if nc and id(nc) not in shown:
+                    shown.add(id(nc))
+                    joined = {"referral": "referral", "organic": "organic",
+                              "outbound": "recruited"}.get(nc["source"], "source unknown")
+                    by = f" by {nc['recruited_by_name']}" if nc.get("recruited_by_name") else ""
+                    out.append(f"  NEW CREATOR: {nc['name']} <{nc['email']}>, "
+                               + ", ".join(f"{h['platform']} @{h['handle']}" for h in nc["handles"])
+                               + f" — {joined}{by} ({nc['how']})")
+                    if nc["same_first_name"]:
+                        out.append("    (not the same person as: "
+                                   + ", ".join(nc["same_first_name"]) + ")")
+                if p.get("add_handles"):
+                    out.append("  adds to their profile: " + ", ".join(
+                        f"{h['platform']} @{h['handle']}" for h in p["add_handles"]))
                 out.append(f"  {what}: {p['creator_name']} ({p['matched_by']}) — "
                            f"{p['campaign_name']} — "
                            + ", ".join(f"{x['platform']} {x['kind'] or ''}".strip() for x in p["posts"]))
@@ -646,7 +875,7 @@ def main(argv=None):
         if os.path.exists(db_path):
             import shutil
             shutil.copyfile(db_path, backup)
-        captures = apply(results, models, media.inbox(uri))
+        captures, new_creators = apply(results, models, media.inbox(uri))
         for entry in results:
             for p in entry["pieces"]:
                 if p.get("status_change"):
@@ -654,7 +883,9 @@ def main(argv=None):
                           f"{p['status_change']}")
         record_processed(data_dir, results, ignored, state)
         with open(args.out, "w") as handle:
-            json.dump({"captures": captures}, handle, indent=1)
+            json.dump({"captures": captures, "new_creators": new_creators}, handle, indent=1)
+        for c in new_creators:
+            print(f"  new creator {c['creator']}: {c['name']} <{c['email']}>")
         print(f"\n-> {len(captures)} new piece(s); capture list in {args.out}")
     return 0
 

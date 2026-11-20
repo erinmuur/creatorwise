@@ -50,6 +50,7 @@ RECRUITMENT_SOURCES = (
     "existing_user",  # already a Readwise customer or affiliate
     "alpha_tester",   # migrated from the Bookwise alpha
     "agency",         # came via a talent agency
+    "organic",        # posted about the app unprompted, then joined us
 )
 
 RECRUITMENT_LABELS = {
@@ -59,6 +60,7 @@ RECRUITMENT_LABELS = {
     "existing_user": "Existing Readwise user",
     "alpha_tester": "Alpha tester",
     "agency": "Agency",
+    "organic": "Organic",
 }
 
 # Where a creator stands in a given campaign, in funnel order. A campaign is
@@ -143,8 +145,8 @@ class Creator(db.Model):
     recruitment_note = db.Column(db.Text)
     notes = db.Column(db.Text)
 
-    # Payment details. Deliberately coarse for v1 — no card/bank numbers here,
-    # just the handle needed to send money and the terms agreed.
+    # How to pay them, coarse. Bank details (account and routing numbers)
+    # live in PaymentDetails, below.
     payment_method = db.Column(db.String(32))      # paypal | venmo | wise | gift_card
     payment_handle = db.Column(db.String(254))
     payment_note = db.Column(db.Text)
@@ -154,6 +156,10 @@ class Creator(db.Model):
     emails = db.relationship(
         "CreatorEmail", back_populates="creator",
         cascade="all, delete-orphan", lazy="selectin",
+    )
+    payment_details = db.relationship(
+        "PaymentDetails", back_populates="creator", uselist=False,
+        cascade="all, delete-orphan",
     )
     handles = db.relationship(
         "SocialHandle", back_populates="creator",
@@ -930,6 +936,54 @@ class PlatformPost(db.Model):
         if not self.views:
             return None
         return round(100 * self.engagement / self.views, 1)
+
+
+class PaymentDetails(db.Model):
+    """Where to send a creator's money: payee and bank account.
+
+    Full account and routing numbers are stored, at Erin's decision
+    (2026-11-19), against advice — the database is copied to the live site,
+    which sits behind one shared password. So: they never go in the repo, in
+    logs, in exports or in drafted emails, and pages show the account number
+    masked unless someone opens the edit form.
+
+    A table of its own (one row per creator) rather than columns on creators,
+    so it arrived without a migration, and so tools/push_data.py can carry
+    edits made on the live site back to the Mac before replacing the server's
+    database (`updated_at` decides which copy is newer).
+    """
+
+    __tablename__ = "payment_details"
+
+    id = db.Column(db.Integer, primary_key=True)
+    creator_id = db.Column(db.Integer, db.ForeignKey("creators.id"),
+                           nullable=False, unique=True)
+    payee_name = db.Column(db.String(200))
+    address = db.Column(db.Text)
+    phone = db.Column(db.String(40))
+    bank_name = db.Column(db.String(120))
+    account_number = db.Column(db.String(32))
+    routing_number = db.Column(db.String(16))
+    updated_at = db.Column(db.DateTime)
+
+    creator = db.relationship("Creator", back_populates="payment_details")
+
+    FIELDS = ("payee_name", "address", "phone", "bank_name",
+              "account_number", "routing_number")
+
+    @property
+    def has_bank_account(self):
+        """Enough to pay by bank transfer: both numbers on file."""
+        return bool(self.account_number and self.routing_number)
+
+    @property
+    def masked_account(self):
+        n = self.account_number or ""
+        return f"••••{n[-4:]}" if n else None
+
+    @property
+    def is_empty(self):
+        return not any(getattr(self, f) for f in self.FIELDS)
 
 
 class InboxItem(db.Model):

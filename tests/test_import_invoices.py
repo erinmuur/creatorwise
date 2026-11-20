@@ -71,6 +71,20 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(f["phone"], "555-010-0142")
         self.assertEqual(f["account_number"], ACCOUNT)
 
+    def test_a_label_is_not_a_name(self):
+        f = ii.parse("From: To:\nInvoice for Readwise\nAccount number: 12345678")
+        self.assertIsNone(f["payee_name"])
+        self.assertEqual(ii.parse("From: To\nName: Bea Lune")["payee_name"], "Bea Lune")
+
+    def test_file_names_with_nicknames_in_brackets(self):
+        self.assertIn("joe stusynski", ii.file_names("Joseph (Joe) Stusynski - 2026 - X.pdf"))
+        self.assertIn("liv devine", ii.file_names("Olivia (Liv Devine) Evanoff - 2026 - X.pdf"))
+        self.assertIn("bea lune", ii.file_names("Bea Lune - 2026 - Announcement.pdf"))
+
+    def test_address_lines_lose_stray_commas(self):
+        f = ii.parse("Address: 1 Example St NW,,\nSpringfield, IL 62701\n")
+        self.assertEqual(f["address"], "1 Example St NW\nSpringfield, IL 62701")
+
     def test_a_bank_number_is_never_taken_for_a_phone(self):
         f = ii.parse(f"Account number: 5550100199\nRouting: {ROUTING}")
         self.assertIsNone(f["phone"])
@@ -88,7 +102,8 @@ class PlanTests(unittest.TestCase):
         self.bea = Creator(name="Bea Lune", email="bea@example.com")
         self.pax = Creator(name="Pax Quill", email="pax.main@example.com")
         self.juno = Creator(name="Juno Hart", email="juno@example.com")
-        db.session.add_all([self.bea, self.pax, self.juno])
+        self.jo = Creator(name="Jo Brightwater", email="jo@example.com")
+        db.session.add_all([self.bea, self.pax, self.juno, self.jo])
         db.session.flush()
         db.session.add(CreatorEmail(creator_id=self.pax.id, address="pax@example.com"))
         db.session.commit()
@@ -110,6 +125,11 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(how["inv1.pdf"], ("Bea Lune", "email"))
         self.assertEqual(how["inv2.pdf"], ("Pax Quill", "email"))     # a secondary address
         self.assertEqual(how["Juno Hart - October.pdf"], ("Juno Hart", "file name"))
+
+    def test_a_nickname_in_the_file_name_matches(self):
+        (e,) = self.plan({"Josephine (Jo) Brightwater - 2026 - Announcement.pdf":
+                          "From: To\nAccount number: 12345678"})
+        self.assertEqual((e["creator"].name, e["how"]), ("Jo Brightwater", "file name"))
 
     def test_unmatched_is_held_not_guessed(self):
         (e,) = self.plan({"x.pdf": "From: Somebody Else\nAccount number: 12345678"})

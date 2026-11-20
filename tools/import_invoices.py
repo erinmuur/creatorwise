@@ -126,6 +126,25 @@ def _clean(value, limit=200):
     return value[:limit] or None
 
 
+# What a "From:"/"Name:" pattern catches when an invoice prints its labels
+# side by side ("From  To" over two columns): a label, or the client.
+_NOT_A_NAME = re.compile(r"^(?:to|from|bill(?:ed)?\s+to|ship\s+to|pay(?:ee)?|invoice\b.*|"
+                         r"date\b.*|amount\b.*|description\b.*|n/?a|none|-+)$", re.I)
+
+
+def _payee(text):
+    """The account holder or sender, if the invoice states one plainly.
+    A label or the invoiced company (Readwise) is not a name: blank beats
+    wrong."""
+    for p in PAYEE:
+        for m in p.finditer(text):
+            value = _clean(m.group(1))
+            if value and not _NOT_A_NAME.match(value) and "readwise" not in value.lower() \
+                    and re.search(r"[A-Za-z]{2}", value):
+                return value
+    return None
+
+
 def parse(text):
     """The payment fields an invoice states, as written. Missing ones are
     None. Pure: no validation beyond shape, no database."""
@@ -135,7 +154,7 @@ def parse(text):
     fields["routing_number"] = _first(ROUTING, text)
     m = BANK.search(text)
     fields["bank_name"] = _clean(m.group(1), 120) if m else None
-    fields["payee_name"] = _clean(_first(PAYEE, text))
+    fields["payee_name"] = _payee(text)
 
     numbers = {re.sub(r"\D", "", v) for v in (fields["account_number"],
                                               fields["routing_number"]) if v}
@@ -170,8 +189,9 @@ def parse(text):
                 fields["address"] = "\n".join(parts)[:600]
                 break
     if fields["address"]:
-        fields["address"] = "\n".join(re.sub(r"\s+", " ", l).strip()
-                                      for l in fields["address"].splitlines() if l.strip())
+        fields["address"] = "\n".join(
+            re.sub(r",\s*,", ",", re.sub(r"\s+", " ", l)).strip(" ,")
+            for l in fields["address"].splitlines() if l.strip(" ,"))
     return fields
 
 
@@ -186,6 +206,28 @@ def mask(number):
 
 
 # --- matching an invoice to a creator ---------------------------------------------------
+
+def file_names(filename):
+    """Names a file name could be giving, for "Name - 2026 - Campaign.pdf".
+
+    "Joseph (Joe) Stusynski" gives "joseph stusynski", "joe stusynski" and
+    "joe"; "Olivia (Liv Devine) Evanoff" gives "olivia evanoff" and
+    "liv devine" — a nickname in brackets is often how they're on file.
+    """
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    head = re.split(r"\s+[-–—]\s+", stem)[0]
+    head = re.sub(r"[_]+", " ", head).strip()
+    out = {re.sub(r"\s+", " ", head).casefold()}
+    m = re.search(r"\(([^)]+)\)", head)
+    if m:
+        inner = m.group(1).strip()
+        outer = re.sub(r"\s+", " ", re.sub(r"\([^)]*\)", " ", head)).strip()
+        out |= {outer.casefold(), inner.casefold()}
+        last = outer.split()[-1] if outer.split() else ""
+        if last and last.casefold() not in inner.casefold():
+            out.add(f"{inner} {last}".casefold())
+    return out
+
 
 def match(text, filename, fields, creators, holders):
     """(creator, how) or (None, why)."""
@@ -206,9 +248,13 @@ def match(text, filename, fields, creators, holders):
     hits = by_full_name(fields.get("payee_name"))
     if len(hits) == 1:
         return hits[0], "name"
-    stem = re.sub(r"[_\-.]+", " ", os.path.splitext(os.path.basename(filename))[0]).casefold()
-    named = [c for c in creators
-             if len(c.name.split()) > 1 and re.search(r"\b" + re.escape(c.name.casefold()) + r"\b", stem)]
+    candidates = file_names(filename)
+    named = [c for c in creators if len(c.name.split()) > 1
+             and c.name.strip().casefold() in candidates]
+    if not named:
+        stem = " ".join(candidates)
+        named = [c for c in creators if len(c.name.split()) > 1 and
+                 re.search(r"\b" + re.escape(c.name.strip().casefold()) + r"\b", stem)]
     if len(named) == 1:
         return named[0], "file name"
     if len(hits) > 1 or len(named) > 1:

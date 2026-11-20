@@ -502,6 +502,10 @@ def plan(payload, sender, state, models):
                     continue
                 cid, matched_by = next(iter(named)), "name only"
 
+            # Addresses the email gives for an existing creator that nobody
+            # holds yet are theirs too ("Sarah's (a@… and b@…)").
+            add_emails = [a for a in given if cid is not None and not holders.get(a)]
+
             on_file = [existing[l["key"]] for l in group if l["key"] in existing]
             new = [l for l in group if l["key"] not in existing]
             if not new:
@@ -534,6 +538,7 @@ def plan(payload, sender, state, models):
                 "piece": target, "creator": cid,
                 "creator_name": new_creator["name"] if new_creator else by_id[cid].name,
                 "new_creator": new_creator, "add_handles": add_handles,
+                "add_emails": add_emails,
                 "matched_by": matched_by, "campaign": campaign.slug,
                 "campaign_name": campaign.name,
                 "posts": [{"platform": l["platform"], "url": l["store"], "kind": l["kind"]}
@@ -630,6 +635,11 @@ def apply(results, models, media_inbox_root, today=None):
                                      "thumbnail": p["new_creator"].get("thumbnail"),
                                      "handles": p["new_creator"]["handles"]})
             creator = db.session.get(Creator, p["creator"])
+            if p.get("add_emails"):
+                from importer import record_email
+                for address in p["add_emails"]:
+                    if record_email(creator, address, source="content email"):
+                        p.setdefault("emails_added", []).append(address)
             for h in p.get("add_handles") or []:
                 if not any(x.platform == h["platform"] and
                            _norm_handle(x.handle) == _norm_handle(h["handle"])
@@ -814,6 +824,8 @@ def render(results, ignored):
                 if p.get("add_handles"):
                     out.append("  adds to their profile: " + ", ".join(
                         f"{h['platform']} @{h['handle']}" for h in p["add_handles"]))
+                if p.get("add_emails"):
+                    out.append("  adds their address: " + ", ".join(p["add_emails"]))
                 out.append(f"  {what}: {p['creator_name']} ({p['matched_by']}) — "
                            f"{p['campaign_name']} — "
                            + ", ".join(f"{x['platform']} {x['kind'] or ''}".strip() for x in p["posts"]))

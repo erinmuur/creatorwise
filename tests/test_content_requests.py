@@ -235,6 +235,16 @@ class PlanTests(unittest.TestCase):
         cr.apply([r], MODELS, self.tmp)
         self.assertIn("bea.second", [h.handle for h in self.bea.handles])
 
+    def test_a_second_address_in_the_email_is_added(self):
+        url = "https://www.instagram.com/reel/AbC123/"
+        (r,), _ = self.plan(msg(f"Bea's post (bea.lune@example.com and bea.other@example.com) "
+                                f"for the Announcement {url}"),
+                            links={url: {"author": "bea.lune"}})
+        (p,) = r["pieces"]
+        self.assertEqual(p["add_emails"], ["bea.other@example.com"])
+        cr.apply([r], MODELS, self.tmp)
+        self.assertIn("bea.other@example.com", [e.address for e in self.bea.emails])
+
     def test_the_jobs_own_reply_is_never_a_request(self):
         reply = msg(f"{cr.JOB_MARK}\nHeld: no campaign named.", id="r1")
         results, ignored = self.plan(reply)

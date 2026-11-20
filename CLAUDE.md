@@ -252,8 +252,7 @@ Creator 307's video (196) came as a file from Erin
 reel (197). 308's surname spelling matches his email address (confirmed
 by Erin, 2026-11-16). Creator 309's reel (198) came the same way, and so did creator 310's (199).
 
-Still absent: engagement numbers for every piece, payment terms, and all
-payment details.
+Engagement numbers exist for the Announcement only (see "Engagement" below).
 
 One opt-ins row is knowingly not imported: it carries one creator's address
 under a different creator's name. Confirmed with Erin on 2026-11-09 — the two
@@ -446,6 +445,30 @@ established that the sheet was campaign-windowed and that this window is the
 right one. The sheet missed 13 creators who had earned referrals (58 in all,
 one of them 25 with no content at all), and was ~6 weeks stale — its totals
 matched the live cumulative figure around late September.
+
+## Engagement
+
+`PlatformPost` holds a post's latest views, likes, comments, shares and
+saves; `PostSnapshot` keeps every reading behind it. Unmeasured is None,
+shown as a dash, never 0, and totals sum only measured posts. A reading
+with no numbers is a snapshot with a `status` — `likes_hidden` (the
+creator hides the count; the page says so) or `unavailable` (removed,
+archived or private) — and leaves the post unmeasured.
+
+- Read in the browser pane, one post at a time, and loaded with
+  `tools/refresh_engagement.py` (`--list`, then `--load FILE --source`,
+  dry run unless `--apply`). The same no-fetching rule as follower counts.
+- TikTok videos: `statsV2` in the page's rehydration data (exact counts,
+  views included). TikTok photo posts have no views and no rehydration
+  item; their counts are the first `like-count` / `comment-count` /
+  `share-count` / `favorite-count` on the page. Instagram: the
+  `og:description` "N likes, M comments" — no views on the web, and
+  nothing at all when likes are hidden. YouTube: the description's
+  factoids (Shorts round views above 10K).
+- **Mute every page as it loads** (`video,audio` muted and paused, kept so
+  on an interval) — the pane plays sound on Erin's Mac.
+- First read 2026-11-20, Announcement: 148 of 168 posts with numbers,
+  19 Instagram posts with likes hidden, one reel taken down (piece 139).
 
 ## Follower counts
 

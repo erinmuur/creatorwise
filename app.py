@@ -1,4 +1,6 @@
+import hmac
 import os
+import secrets
 from datetime import date
 
 from dotenv import load_dotenv
@@ -6,7 +8,7 @@ load_dotenv()
 
 from flask import (
     Flask, abort, g, jsonify, redirect, render_template, request, send_file,
-    url_for,
+    session, url_for,
 )
 
 from models import (
@@ -26,6 +28,7 @@ import auth
 import avatars
 import datasync
 import media
+import payments
 import gmail
 import scan as scan_lib
 
@@ -112,7 +115,22 @@ def inject_globals():
         "avatar_ids": _avatar_ids(),
         "media_ids": _media_ids(),
         "media_thumb": _media_thumb,
+        "csrf_token": _csrf_token,
     }
+
+
+def _csrf_token():
+    """A per-session token for forms that change sensitive data. SameSite=Lax
+    already stops most cross-site posts; this closes the rest for the
+    payment form, which carries bank details."""
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_urlsafe(24)
+    return session["csrf"]
+
+
+def _csrf_ok():
+    sent = request.form.get("csrf_token") or ""
+    return bool(session.get("csrf")) and hmac.compare_digest(sent, session["csrf"])
 
 
 def _media_folder():
@@ -337,6 +355,21 @@ def creator_detail(creator_id):
         pieces=pieces,
         participations=participations,
     )
+
+
+@app.route("/creators/<int:creator_id>/payment", methods=["POST"])
+def creator_payment(creator_id):
+    """Save the profile's payment details form. Errors name the field, never
+    echo the number back into a URL or a log."""
+    creator = db.session.get(Creator, creator_id) or abort(404)
+    if not _csrf_ok():
+        abort(400)
+    errors = payments.save(creator, request.form)
+    if errors:
+        return redirect(url_for("creator_detail", creator_id=creator.id,
+                                payment_error="; ".join(errors)) + "#payment")
+    return redirect(url_for("creator_detail", creator_id=creator.id, payment_saved=1)
+                    + "#payment")
 
 
 @app.route("/ugc/<int:piece_id>")

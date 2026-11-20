@@ -13,6 +13,9 @@ database). Unset means every endpoint answers 503 — closed, not open.
     PUT    /api/data/file/<path>   one media file or photo, checked by sha256
     DELETE /api/data/file/<path>   one media file or photo
     PUT    /api/data/db            the whole database, replaced in one step
+    GET    /api/data/payment-details   payment details as the server has them,
+                                   so push_data.py can keep edits made on
+                                   the live site before replacing its database
 
 Only paths shaped like what media.py and avatars.py store are accepted —
 `media/<piece>/video.mp4`, `avatars/<creator>.jpg` and so on — so nothing
@@ -40,7 +43,8 @@ import media
 bp = Blueprint("datasync", __name__)
 
 ENDPOINTS = {"datasync.manifest", "datasync.put_file",
-             "datasync.delete_file", "datasync.put_db"}
+             "datasync.delete_file", "datasync.put_db",
+             "datasync.payment_details"}
 
 ALLOWED = re.compile(
     r"^(?:media/\d+/(?:video\.mp4|poster\.jpg|transcript\.txt|source\.json"
@@ -151,6 +155,16 @@ def manifest():
     if db_path and os.path.isfile(db_path):
         database = {"size": os.path.getsize(db_path)}
     return jsonify(files=files, database=database)
+
+
+@bp.route("/api/data/payment-details")
+def payment_details():
+    """The one thing edited on the live site rather than the Mac. Read back
+    by tools/push_data.py before every upload; behind SYNC_TOKEN like the
+    rest of this blueprint."""
+    import payments
+    from models import PaymentDetails
+    return jsonify(rows=payments.as_rows(PaymentDetails.query.all()))
 
 
 @bp.route("/api/data/file/<path:relpath>", methods=["PUT"])

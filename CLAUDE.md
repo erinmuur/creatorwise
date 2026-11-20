@@ -32,6 +32,7 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `tools/import_media.py` | drop folders per post, then file what a person saved |
 | `tools/transcribe_media.py` | local Whisper transcripts; Vision OCR for slides |
 | `datasync.py` | token-guarded upload endpoints for `data/` (see below) |
+| `payments.py` | creators' payment details: form checks, and merging live-site edits back |
 | `tools/push_data.py` | send the local DB, media and photos to the server |
 | `tools/refresh_followers.py` | worklist of handles; load follower readings with history |
 | `tools/fetch_youtube_followers.py` | subscriber counts from the YouTube Data API |
@@ -822,6 +823,36 @@ guide: `docs/content-by-email.md`.
   `data/content-requests.log`.
 - First run, 2026-11-19: piece 201 (new, with Erin's file) and an Instagram
   reel added to 190 as its cross-post (same 240.3s readathon video).
+
+## Payment details
+
+Each creator profile has a Payment panel: payee name, address, phone, bank
+name, account number and routing number (`PaymentDetails`, one row per
+creator, its own table so it needed no migration). **Full account and
+routing numbers are stored in plain text at Erin's decision (2026-11-19),
+against advice**: the database is copied to the live site behind one shared
+password. So, always:
+
+- Never put real payment details in the repo — tests, fixtures, docs,
+  commits. Tests use invented accounts and a published routing number.
+- Never log, export, print or email them. Errors name the field, not the
+  value. The profile shows the account masked (••••1234); the full number is
+  only in the edit form. Drafted payment emails must never include them.
+- Claude never types a creator's bank numbers in; Erin does, in the form.
+- The form posts with a per-session CSRF token (`csrf_token()`).
+- Routing numbers are checked against the ABA checksum; account numbers
+  must be 4–17 digits. Blank fields are fine — details arrive piecemeal.
+
+This is the one thing edited **on the live site** as well as the Mac. Since
+`push_data.py` replaces the server's database, it first reads
+`/api/data/payment-details` (SYNC_TOKEN) and merges any server row newer than
+the Mac's (`updated_at`) into the local database. If it can't read them, it
+refuses to replace the database rather than risk losing them. The endpoint
+is in `datasync.ENDPOINTS`, so the session gate lets the token through —
+leaving it out made every upload fail with a 302 in the tests.
+
+`PaymentDetails.has_bank_account` (both numbers present) is what decides
+which of Erin's two payment emails a creator gets.
 
 ## The mail scanner
 

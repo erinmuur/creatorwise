@@ -192,6 +192,10 @@ class TestClientRemote(push_data.Remote):
         return self._check(self.client.put("/api/data/db", data=content, headers={
             **AUTH, "X-Content-SHA256": sha(content)}))
 
+    def payment_details(self):
+        return self._check(self.client.get("/api/data/payment-details",
+                                           headers=AUTH))["rows"]
+
 
 class PushTests(Base):
     def setUp(self):
@@ -242,6 +246,32 @@ class PushTests(Base):
         self.assertIn("avatars/4.jpg", self.remote.manifest()["files"])
         self.push(True, prune=True)
         self.assertNotIn("avatars/4.jpg", self.remote.manifest()["files"])
+
+    def test_details_entered_on_the_server_survive_a_push(self):
+        from datetime import datetime
+        from models import PaymentDetails
+        with appmod.app.app_context():
+            c = Creator(name="Server Edit", email="edit@example.com")
+            db.session.add(c)
+            db.session.flush()
+            db.session.add(PaymentDetails(creator_id=c.id, bank_name="Example Bank",
+                                          updated_at=datetime(2026, 11, 19, 12)))
+            db.session.commit()
+            cid = c.id
+        # The Mac's copy knows the creator but not the details.
+        conn = sqlite3.connect(self.database)
+        conn.execute("INSERT INTO creators (id, name, email) VALUES (?, ?, ?)",
+                     (cid, "Server Edit", "edit@example.com"))
+        conn.commit()
+        conn.close()
+        _diff, failures = self.push(True)
+        self.assertEqual(failures, [])
+        with appmod.app.app_context():
+            self.assertEqual(db.session.get(Creator, cid).payment_details.bank_name,
+                             "Example Bank")
+
+    def test_payment_details_need_the_token(self):
+        self.assertEqual(self.client.get("/api/data/payment-details").status_code, 401)
 
     def test_the_token_never_goes_over_plain_http(self):
         with self.assertRaises(ValueError):

@@ -131,6 +131,15 @@ class Remote:
     def delete_file(self, rel):
         return self._call("DELETE", "/api/data/file/" + urllib.parse.quote(rel))
 
+    def payment_details(self):
+        """The server's payment details, or None if it predates them."""
+        try:
+            return self._call("GET", "/api/data/payment-details").get("rows", [])
+        except OSError as error:
+            if "HTTP 404" in str(error):
+                return None
+            raise
+
     def put_db(self, path):
         size, sha = os.path.getsize(path), sha256_of(path)
         with open(path, "rb") as handle:
@@ -180,6 +189,28 @@ def push(remote, root, database, apply_changes, prune, say=print):
                 remote.delete_file(rel)
             except OSError as error:
                 failures.append((rel, str(error)))
+
+    # Payment details are the one thing typed in on the live site. Take the
+    # server's newer ones into the local database first, or this upload
+    # would replace them with the Mac's older copy.
+    try:
+        rows = remote.payment_details()
+    except OSError as error:
+        failures.append(("payment details", str(error)))
+        for rel, err in failures:
+            say(f"FAILED {rel}: {err}")
+        say("Database NOT replaced: couldn't read the server's payment details, "
+            "and replacing it could lose ones entered there.")
+        return diff, failures
+    if rows:
+        import payments
+        conn = sqlite3.connect(database)
+        try:
+            taken = payments.merge_rows(conn, rows)
+        finally:
+            conn.close()
+        if taken:
+            say(f"Kept {taken} payment detail edit(s) made on the live site.")
 
     with tempfile.TemporaryDirectory() as scratch:
         copy = snapshot(database, os.path.join(scratch, "creatorwise.db"))

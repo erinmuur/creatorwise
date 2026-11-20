@@ -408,3 +408,15 @@ tr[hidden] { display: none; }
   white-space: pre-wrap; font-size: 14px; line-height: 22px;
   max-height: 420px; overflow-y: auto; color: var(--text-primary);
 }
+
+/* ---------- payment details (creator profile) ---------- */
+
+.pay-edit { margin-top: var(--space-16); }
+.pay-edit summary { list-style: none; display: inline-block; }
+.pay-edit summary::-webkit-details-marker { display: none; }
+.pay-edit form { display: grid; gap: var(--space-12); margin-top: var(--space-12); }
+.pay-label { display: grid; gap: var(--space-4); font-size: 12px; color: var(--text-secondary); }
+.pay-label .field { width: 100%; box-sizing: border-box; font-size: 14px; }
+.pay-label textarea.field { resize: vertical; font-family: inherit; border-radius: 12px; }
+.pay-note { margin: 0 0 var(--space-8); color: var(--text-secondary); }
+.pay-error { color: var(--danger, #b42318); }

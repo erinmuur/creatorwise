@@ -9,7 +9,8 @@ makes them paid by PayPal.
     ./venv/bin/python tools/import_invoices.py ~/Desktop/invoices --apply
 
 Give it invoices or folders of them (subfolders too): PDF, or Word .docx /
-.doc / .rtf. Each is read on this Mac (macOS's own PDFKit, Vision for a
+.doc / .rtf — or a creator's reply to the payment email, saved as .eml
+("Download message") or printed to PDF. Each is read on this Mac (macOS's own PDFKit, Vision for a
 scanned page, textutil for Word), matched to one creator, and
 its payee name, address, phone, bank name, account and routing number are
 shown — the account and routing numbers masked — so the match can be
@@ -67,7 +68,42 @@ def pdf_text(path, timeout=120):
 
 # Word files are read with macOS's own textutil — no extra installs.
 WORD = (".docx", ".doc", ".rtf")
-KINDS = (".pdf",) + WORD
+# A creator's reply to the payment email, saved with "Download message"
+# (.eml) or as text. Read with Python's email parser.
+MAIL = (".eml", ".txt")
+KINDS = (".pdf",) + WORD + MAIL
+
+# Where a reply's quoted original starts: everything after is Erin's own
+# email, whose blank "Account #" / "Routing #" lines must not be read.
+_QUOTE_START = re.compile(r"^(?:on .{4,120} wrote:|-+\s*original message\s*-+|from: .+@readwise\.io)",
+                          re.I | re.M)
+
+
+def mail_text(path):
+    """The reply's own words, with its sender's address on top (so it can be
+    matched), minus the quoted email it answers."""
+    import email
+    from email import policy
+    if path.lower().endswith(".txt"):
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return strip_quoted(f.read())
+    with open(path, "rb") as f:
+        msg = email.message_from_binary_file(f, policy=policy.default)
+    part = msg.get_body(preferencelist=("plain", "html"))
+    body = part.get_content() if part else ""
+    if part is not None and part.get_content_type() == "text/html":
+        body = re.sub(r"<br\s*/?>|</p>|</div>", "\n", body, flags=re.I)
+        body = re.sub(r"<[^>]+>", " ", body)
+        import html as h
+        body = h.unescape(body)
+    sender = msg.get("From", "")
+    return f"From: {sender}\n{strip_quoted(body)}"
+
+
+def strip_quoted(text):
+    m = _QUOTE_START.search(text or "")
+    text = text[: m.start()] if m else text
+    return "\n".join(l for l in text.splitlines() if not l.lstrip().startswith(">"))
 
 
 def word_text(path, timeout=60):
@@ -82,7 +118,9 @@ def word_text(path, timeout=60):
 
 
 def read_invoice(path):
-    """The text of a PDF or Word invoice."""
+    """The text of an invoice (PDF, Word) or a saved reply email."""
+    if path.lower().endswith(MAIL):
+        return mail_text(path)
     if path.lower().endswith(WORD):
         return word_text(path)
     return pdf_text(path)
@@ -126,7 +164,9 @@ ROUTING = [
 BANK = re.compile(r"\bbank(?:\s+name)?\s*[:\-]\s*(.+?)" + _STOP, re.I | re.M)
 PAYEE = [
     re.compile(r"\b(?:account\s+holder(?:\s+name)?|name\s+on\s+(?:the\s+)?account|"
-               r"account\s+name|beneficiary(?:\s+name)?)\s*[:\-]\s*(.+?)" + _STOP, re.I | re.M),
+               r"account\s+name|beneficiary(?:\s+name)?|"
+               r"full\s+name(?:\s+associated?\s+with\s+(?:the\s+)?(?:bank\s+)?account)?)"
+               r"\s*[:\-]\s*(.+?)" + _STOP, re.I | re.M),
     re.compile(r"\b(?:payee|pay\s+to|bill(?:ed)?\s+from|from)\s*[:\-]\s*(.+?)" + _STOP, re.I | re.M),
     re.compile(r"(?:^|\s{2,})name\s*[:\-]\s*(.+?)" + _STOP, re.I | re.M),
 ]
@@ -534,7 +574,7 @@ def main(argv=None):
 
     files = find_pdfs(args.paths)
     if not files:
-        print("No invoices (PDF or Word) found there.")
+        print("No invoices or saved replies (PDF, Word, .eml) found there.")
         return 1
 
     import logging

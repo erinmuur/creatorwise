@@ -893,10 +893,20 @@ site comes back through `push_data.py` like payment details do.
   query over each creator's own window (shared addresses left out), with a
   ROLLUP checksum; `referral-load` refuses a result that doesn't add up.
 - 38 creators were marked paid from Erin's list on 2026-11-20 ("paid before
-  creatorwise tracked payments"). Creators 292 and 91
-  are one person: the payment is on 292, the invoice details on 91 — merge
-  them when convenient. One creator posted but has no piece on file yet,
-  so his payment has no date.
+  creatorwise tracked payments"). Creator 91 was merged into
+  creator 292 the same day — one person (Erin): her second address,
+  TikTok and payment details moved to 292, record 91 deleted (backup
+  `data/creatorwise.db.bak-merge`; its old photo still sits on the server,
+  unused). One creator posted but has no piece on file yet, so his
+  payment has no date.
+- **Replies with details**: Claude doesn't enter bank numbers, and doesn't
+  read replies to copy them. The daily task lists who has replied (Gmail
+  metadata only: sender and date), and Erin saves each reply (.eml via
+  "Download message", or a PDF) into her invoices folder and runs
+  `tools/import_invoices.py`, which reads saved replies too — it drops the
+  quoted original and matches on the sender. Once details are on file, the
+  next run drafts that creator's invoice email. Which email a payment last
+  got is in `draft_id`'s prefix (`details:` / `invoice:`).
 - **Invoices** are PDFs in Erin's creators' layout (`tools/invoice_pdf.swift`,
   numbered from 1001), with full bank numbers at Erin's decision. They live
   in `data/invoices/` (gitignored, never synced: push_data only sends media

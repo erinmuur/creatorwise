@@ -141,6 +141,27 @@ class EmailTests(Base):
         self.assertTrue(body.startswith("<p>Hey Bea"))
 
 
+class FollowUpTests(Base):
+    def test_details_arriving_later_bring_the_invoice_email(self):
+        payments.refresh(self.camp, TODAY)
+        bea = self.pay(self.bea)
+        bea.referrals = 0
+        db.session.commit()
+        self.assertTrue(pd.ready_for_email(bea))               # never emailed
+        bea.drafted_on, bea.draft_id = TODAY, "details:d1"
+        db.session.commit()
+        self.assertFalse(pd.ready_for_email(bea))              # asked; nothing back yet
+        self.assertEqual([p.id for p in pd.awaiting(Payment.query.all())], [bea.id])
+        db.session.add(PaymentDetails(creator_id=self.bea.id, account_number="000123456789",
+                                      routing_number="021000021"))
+        db.session.commit()
+        db.session.refresh(self.bea)
+        self.assertTrue(pd.ready_for_email(bea))               # details in: invoice email
+        self.assertEqual(pd.awaiting(Payment.query.all()), [])
+        bea.draft_id = "invoice:d2"
+        self.assertFalse(pd.ready_for_email(bea))              # and only once
+
+
 class PageTests(Base):
     def setUp(self):
         super().setUp()

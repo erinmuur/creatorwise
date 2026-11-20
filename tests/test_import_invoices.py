@@ -221,6 +221,56 @@ class PlanTests(unittest.TestCase):
         self.assertIsNotNone(row.updated_at)
 
 
+REPLY = """From: Bea Lune <bea@example.com>
+To: Erin <erin@readwise.io>
+Subject: Re: Your Readwise announcement payment
+Content-Type: text/plain; charset=utf-8
+
+Hi Erin! Here you go:
+
+Full name associated with bank account: Beatrice Lune
+Account #: 000123456789
+Routing #: 021000021
+Bank Name: Example Bank
+Phone: 555-010-0199
+Address: 1 Example Street
+Springfield, IL 62701
+
+Thanks!
+
+On Fri, Nov 20, 2026 at 9:00 AM Erin <erin@readwise.io> wrote:
+> When you have a chance, can you please confirm your payment details?
+> Full name associate with bank account
+> Account #
+> Routing #
+"""
+
+
+class ReplyTests(unittest.TestCase):
+    def test_a_saved_reply_email(self):
+        folder = tempfile.mkdtemp()
+        try:
+            path = os.path.join(folder, "Re payment.eml")
+            with open(path, "w") as f:
+                f.write(REPLY)
+            self.assertEqual(ii.find_pdfs([folder]), [path])
+            text = ii.read_invoice(path)
+            self.assertNotIn("wrote:", text)                  # the quoted original is gone
+            self.assertIn("bea@example.com", ii.emails_in(text))
+            f = ii.parse(text)
+            self.assertEqual((f["payee_name"], f["account_number"], f["routing_number"],
+                              f["bank_name"]),
+                             ("Beatrice Lune", "000123456789", "021000021", "Example Bank"))
+            self.assertEqual(f["address"], "1 Example Street\nSpringfield, IL 62701")
+        finally:
+            shutil.rmtree(folder)
+
+    def test_a_paypal_reply(self):
+        text = ii.strip_quoted("Sure, PayPal is fine: bea.pays@example.com\n\nOn Fri, Nov 20, 2026 Erin wrote:\n> Account #")
+        self.assertEqual(ii.parse(text)["paypal"], "bea.pays@example.com")
+        self.assertIsNone(ii.parse(text)["account_number"])
+
+
 @unittest.skipUnless(shutil.which("cupsfilter") and shutil.which("swiftc")
                      and shutil.which("textutil"), "needs macOS tools")
 class RealPdfTests(unittest.TestCase):

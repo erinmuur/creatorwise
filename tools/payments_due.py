@@ -13,9 +13,12 @@ after it). A daily scheduled Claude task, `creatorwise-payments`, runs:
     referral-load RESULT.json     load what Readwise returned (checksummed)
     invoices                      a PDF invoice per pending creator whose
                                   payment details are on file
-    drafts                        what each email should say, as JSON
+    drafts                        what each email should say, as JSON (a
+                                  creator asked for details gets the invoice
+                                  email once their details are on file)
     upload --file F --url U       send an invoice to Superhuman's upload URL
-    drafted --payment N --draft-id D
+    drafted --payment N --draft-id D --kind invoice|details
+    awaiting                      asked for details, still without them
 
 The emails are drafts in Erin's Superhuman: nothing is sent. Invoices carry
 full bank numbers (Erin's decision, 2026-11-20), so: they are written under
@@ -190,8 +193,29 @@ def write_invoice(payment, folder, issued):
     return path
 
 
+def drafted_kind(p):
+    """Which email the last draft was: draft_id is stored as "invoice:<id>" or
+    "details:<id>" (older ids, bare, were from the first run)."""
+    if not p.draft_id:
+        return None
+    return p.draft_id.split(":", 1)[0] if ":" in p.draft_id else "unknown"
+
+
 def ready_for_email(p):
-    return p.status == "pending" and p.amount_known and p.first_posted_on and not p.drafted_on
+    """Pending, dated, counted — and either never emailed, or asked for
+    their details before and now has them on file (so they get the invoice)."""
+    if not (p.status == "pending" and p.amount_known and p.first_posted_on):
+        return False
+    if not p.drafted_on:
+        return True
+    return drafted_kind(p) == "details" and p.creator.payment_ready
+
+
+def awaiting(rows):
+    """Asked for their payment details and still without them: whose replies
+    Erin may need to save and import."""
+    return [p for p in rows if p.status == "pending" and drafted_kind(p) == "details"
+            and not p.creator.payment_ready]
 
 
 # --- CLI ---------------------------------------------------------------------------
@@ -226,6 +250,9 @@ def main(argv=None):
     s = sub.add_parser("drafted")
     s.add_argument("--payment", type=int, required=True)
     s.add_argument("--draft-id", required=True)
+    s.add_argument("--kind", choices=["invoice", "details"], required=True,
+                   help="invoice: the email with the invoice; details: the one asking for them")
+    sub.add_parser("awaiting")
     args = parser.parse_args(argv)
 
     if args.cmd == "upload":
@@ -346,10 +373,18 @@ def main(argv=None):
             print(json.dumps({"drafts": out}, indent=1))
             return 0
 
+        if args.cmd == "awaiting":
+            out = [{"payment": p.id, "creator": p.creator.name,
+                    "addresses": sorted({p.creator.email} | {e.address for e in p.creator.emails}),
+                    "asked_on": p.drafted_on.isoformat() if p.drafted_on else None}
+                   for p in awaiting(Payment.query.all())]
+            print(json.dumps({"awaiting": out}, indent=1))
+            return 0
+
         if args.cmd == "drafted":
             p = db.session.get(Payment, args.payment)
             p.drafted_on = today
-            p.draft_id = args.draft_id
+            p.draft_id = f"{args.kind}:{args.draft_id}"
             p.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.session.commit()
             print(f"payment {p.id} ({p.creator.name}) marked drafted")

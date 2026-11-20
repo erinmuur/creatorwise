@@ -183,7 +183,8 @@ class PlanTests(unittest.TestCase):
         self.assertIsNotNone(row.updated_at)
 
 
-@unittest.skipUnless(shutil.which("cupsfilter") and shutil.which("swiftc"), "needs macOS tools")
+@unittest.skipUnless(shutil.which("cupsfilter") and shutil.which("swiftc")
+                     and shutil.which("textutil"), "needs macOS tools")
 class RealPdfTests(unittest.TestCase):
     def test_a_pdf_is_read_end_to_end(self):
         folder = tempfile.mkdtemp()
@@ -211,6 +212,26 @@ class RealPdfTests(unittest.TestCase):
             f = ii.parse(ii.pdf_text(scan, timeout=90))
             self.assertEqual(f["account_number"], ACCOUNT)
             self.assertEqual(f["routing_number"], ROUTING)
+        finally:
+            shutil.rmtree(folder)
+
+    def test_a_word_invoice_is_read_too(self):
+        folder = tempfile.mkdtemp()
+        try:
+            src = os.path.join(folder, "invoice.txt")
+            with open(src, "w") as handle:
+                handle.write(LABELLED)
+            sub = os.path.join(folder, "October")
+            os.makedirs(sub)
+            docx = os.path.join(sub, "Bea Lune - 2026 - Announcement.docx")
+            subprocess.run(["textutil", "-convert", "docx", src, "-output", docx],
+                           capture_output=True, check=True)
+            os.unlink(src)
+            self.assertEqual(ii.find_pdfs([folder]), [docx])     # found in a subfolder
+            f = ii.parse(ii.read_invoice(docx))
+            self.assertEqual(f["account_number"], ACCOUNT)
+            self.assertEqual(f["routing_number"], ROUTING)
+            self.assertEqual(f["bank_name"], "Example Bank")
         finally:
             shutil.rmtree(folder)
 

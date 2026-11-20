@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fill creators' payment details from their PDF invoices. Erin runs this.
+"""Fill creators' payment details from their invoices (PDF or Word). Erin runs this.
 
 Bank transfer or PayPal: an invoice with full bank details makes them paid by
 bank transfer; one with only a PayPal address ("PayPal: x@y", paypal.me/x)
@@ -8,8 +8,9 @@ makes them paid by PayPal.
     ./venv/bin/python tools/import_invoices.py ~/Desktop/invoices
     ./venv/bin/python tools/import_invoices.py ~/Desktop/invoices --apply
 
-Give it PDFs or folders of them. Each invoice is read on this Mac (macOS's
-own PDFKit; a scanned page is read with Vision), matched to one creator, and
+Give it invoices or folders of them (subfolders too): PDF, or Word .docx /
+.doc / .rtf. Each is read on this Mac (macOS's own PDFKit, Vision for a
+scanned page, textutil for Word), matched to one creator, and
 its payee name, address, phone, bank name, account and routing number are
 shown — the account and routing numbers masked — so the match can be
 checked. Nothing is saved without --apply.
@@ -64,15 +65,41 @@ def pdf_text(path, timeout=120):
     return done.stdout
 
 
+# Word files are read with macOS's own textutil — no extra installs.
+WORD = (".docx", ".doc", ".rtf")
+KINDS = (".pdf",) + WORD
+
+
+def word_text(path, timeout=60):
+    try:
+        done = subprocess.run(["textutil", "-convert", "txt", "-stdout", path],
+                              capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise ValueError(f"reading it took over {timeout}s — enter this one by hand")
+    if done.returncode != 0:
+        raise ValueError(done.stderr.strip() or "couldn't read the document")
+    return done.stdout
+
+
+def read_invoice(path):
+    """The text of a PDF or Word invoice."""
+    if path.lower().endswith(WORD):
+        return word_text(path)
+    return pdf_text(path)
+
+
 def find_pdfs(paths):
+    """Invoices (PDF or Word) in the given files and folders, subfolders too."""
     out = []
     for p in paths:
         p = os.path.expanduser(p)
         if os.path.isdir(p):
-            for name in sorted(os.listdir(p)):
-                if name.lower().endswith(".pdf") and not name.startswith("."):
-                    out.append(os.path.join(p, name))
-        elif p.lower().endswith(".pdf"):
+            for root, dirs, names in os.walk(p):
+                dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+                for name in sorted(names):
+                    if name.lower().endswith(KINDS) and not name.startswith((".", "~$")):
+                        out.append(os.path.join(root, name))
+        elif p.lower().endswith(KINDS):
             out.append(p)
     return out
 
@@ -274,7 +301,7 @@ def match(text, filename, fields, creators, holders):
 
 # --- plan / apply -------------------------------------------------------------------------
 
-def plan(files, creators, holders, read=pdf_text):
+def plan(files, creators, holders, read=read_invoice):
     """One entry per file: creator, how, fields to write, problems."""
     from payments import routing_ok
     out = []
@@ -383,13 +410,13 @@ def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("paths", nargs="+", help="PDF files or folders of them")
+    parser.add_argument("paths", nargs="+", help="invoices (PDF or Word) or folders of them")
     parser.add_argument("--apply", action="store_true", help="save what the preview shows")
     args = parser.parse_args(argv)
 
     files = find_pdfs(args.paths)
     if not files:
-        print("No PDFs found there.")
+        print("No invoices (PDF or Word) found there.")
         return 1
 
     import logging

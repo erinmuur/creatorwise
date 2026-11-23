@@ -599,10 +599,14 @@ class Campaign(db.Model):
         (paid, nobody signed up — no cost per customer to state); "pending"
         (their bonus isn't counted yet, so the cost isn't known);
         "no_invoice" (a campaign paid outside creatorwise, like the
-        softlaunch, with no invoice on file for them)."""
+        softlaunch, with no invoice on file for them); "not_paid" (Erin
+        decided not to pay them — a cost of $0, so no CAC to state)."""
         if not self.pays_creators:
             return None
         pay = Payment.query.filter_by(creator_id=creator.id, campaign_id=self.id).first()
+        if pay is not None and pay.status == "not_paid":
+            return {"state": "not_paid", "cents": None, "paid_cents": 0,
+                    "referrals": self.referrals_for(creator) or 0, "reason": pay.note}
         if not self.has_pay_rules and (pay is None or not pay.amount_known):
             return {"state": "no_invoice", "cents": None, "paid_cents": None, "referrals": None}
         if pay is None or not pay.amount_known:
@@ -621,11 +625,12 @@ class Campaign(db.Model):
         is known (bonus counted) — spend and referrals from the same people,
         so creators still in their bonus window don't skew it either way.
         Paid creators with no referrals count: their cost had no return.
-        None when this campaign pays nobody or nothing is counted yet."""
+        So do creators Erin decided not to pay, at $0: their referrals came
+        free. None when this campaign pays nobody or nothing is counted yet."""
         if not self.pays_creators:
             return None
         rows = [self.cac_for(g.creator) for g in self.creator_groups]
-        known = [r for r in rows if r and r["state"] in ("ok", "no_referrals")]
+        known = [r for r in rows if r and r["state"] in ("ok", "no_referrals", "not_paid")]
         paid = sum(r["paid_cents"] for r in known)
         referrals = sum(r["referrals"] for r in known)
         if not known:
@@ -1125,7 +1130,9 @@ class Payment(db.Model):
     One per creator per campaign (Erin, 2026-11-20): due 14 days after their
     first post in it; the amount is the campaign's base fee plus a bonus per
     referral in those 14 days (payments.PAY_RULES). Statuses: `upcoming`
-    (not due yet), `pending` (due, not paid), `paid`. tools/payments_due.py
+    (not due yet), `pending` (due, not paid), `paid`, and `not_paid` (Erin
+    decided not to pay: posted outside the window, or never sent details;
+    costs $0, the reason in `note`). tools/payments_due.py
     keeps these current; the Payments page marks them paid. `updated_at`
     lets push_data.py keep a "Mark paid" clicked on the live site.
     """
@@ -1154,7 +1161,8 @@ class Payment(db.Model):
     creator = db.relationship("Creator")
     campaign = db.relationship("Campaign")
 
-    STATUS_LABELS = {"upcoming": "Upcoming", "pending": "Pending", "paid": "Paid"}
+    STATUS_LABELS = {"upcoming": "Upcoming", "pending": "Pending", "paid": "Paid",
+                     "not_paid": "Not paid"}
 
     @property
     def status_label(self):

@@ -63,7 +63,7 @@
     <div class="stat">
       <div class="stat-label">Blended CAC</div>
       <div class="stat-value">{{ (blended.cents | money) if blended.cents is not none else "—" }}</div>
-      <div class="stat-note" title="{% if campaign.has_pay_rules %}What these creators were paid ($100 + $5 per referral in the 14 days after their first post), divided by their referrals for the whole campaign. Creators still in their 14-day bonus window are left out until it's counted.{% else %}What these creators were paid, from their invoices, divided by their referrals for the whole campaign. Creators with no invoice on file are left out.{% endif %}">
+      <div class="stat-note" title="{% if campaign.has_pay_rules %}What these creators were paid ($100 + $5 per referral in the 14 days after their first post), divided by their referrals for the whole campaign. Creators still in their 14-day bonus window are left out until it's counted; creators not paid count at $0.{% else %}What these creators were paid, from their invoices, divided by their referrals for the whole campaign. Creators not paid count at $0; creators with no invoice on file are left out.{% endif %}">
         {{ blended.paid_cents | money }} paid ÷ {{ blended.referrals | thousands }} referrals · {{ blended.counted }} of {{ blended.creators }} creators
       </div>
     </div>
@@ -130,6 +130,8 @@
         <span title="Paid {{ cac.paid_cents | money }} ({% if campaign.has_pay_rules %}$100 + $5 per referral in the 14 days after their first post{% else %}their invoice{% endif %}) ÷ {{ cac.referrals | thousands }} referrals this campaign"><b>{{ cac.cents | money }}</b> CAC</span>
         {% elif cac.state == "no_referrals" %}
         <span title="Paid {{ cac.paid_cents | money }}, no referrals this campaign"><b>—</b> CAC · no referrals</span>
+        {% elif cac.state == "not_paid" %}
+        <span title="Not paid for this campaign{% if cac.reason %}: {{ cac.reason }}{% endif %}"><b>—</b> CAC · not paid</span>
         {% elif cac.state == "no_invoice" %}
         <span title="No invoice on file for this campaign"><b>—</b> CAC · no invoice on file</span>
         {% else %}

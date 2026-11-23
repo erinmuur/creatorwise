@@ -951,7 +951,14 @@ site comes back through `push_data.py` like payment details do.
   campaigns, and a softlaunch creator with no invoice reads "no invoice on
   file". Only the amounts were read from the invoices (a script masked
   every other digit); nothing else was stored. Blended $14.38 ($7,016 ÷
-  488 referrals, 38 of 43 creators). So paid rows get
+  488 referrals, 38 of 43 creators). Then, on Erin's word the same day:
+  creator 40 was paid $2,900 (no invoice on file; a `paid` row with that
+  as `base_cents`), and 252 (posted after the window) and the duo 77/78
+  (never sent details) were not paid — status `not_paid`, $0, reason in
+  `note`. A `not_paid` row reads "CAC · not paid" on the tile, counts in
+  blended CAC at $0 (its referrals came free), and `refresh` never
+  touches it. Blended $18.96 ($9,916 ÷ 523, 42 of 43); only 70 has no
+  invoice. So paid rows get
   counted too: `refresh` gives a paid row the window it lacks (never its
   status), and `referral-sql` / `referral-load` cover paid as well as
   pending. 2026-11-23: the 36 undated pieces of paid creators were dated

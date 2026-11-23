@@ -159,6 +159,35 @@ class CacTests(Base):
         payments.refresh(self.camp, TODAY)                                # leaves it alone
         self.assertEqual(Payment.query.filter_by(campaign_id=soft.id).count(), 1)
 
+    def test_a_creator_not_paid_counts_at_zero(self):
+        from models import CampaignReferral
+        soft = Campaign(name="Bookwise Softlaunch", slug="bookwise-softlaunch")
+        db.session.add(soft)
+        db.session.flush()
+        for c in (self.bea, self.pax):
+            db.session.add(Participation(creator_id=c.id, campaign_id=soft.id,
+                                         status="content_delivered"))
+            db.session.add(UgcPiece(creator_id=c.id, campaign_id=soft.id))
+        db.session.add(Payment(creator_id=self.bea.id, campaign_id=soft.id, status="paid",
+                               base_cents=10000, per_referral_cents=0, referrals=0))
+        db.session.add(Payment(creator_id=self.pax.id, campaign_id=soft.id, status="not_paid",
+                               base_cents=0, per_referral_cents=0, referrals=0,
+                               note="never sent payment details"))
+        db.session.add(CampaignReferral(campaign_id=soft.id, creator_id=self.bea.id, referrals=8))
+        db.session.add(CampaignReferral(campaign_id=soft.id, creator_id=self.pax.id, referrals=2))
+        db.session.commit()
+        cac = soft.cac_for(self.pax)
+        self.assertEqual((cac["state"], cac["paid_cents"], cac["referrals"]), ("not_paid", 0, 2))
+        blended = soft.blended_cac                         # $100 / (8 + 2)
+        self.assertEqual((blended["cents"], blended["counted"]), (1000, 2))
+
+    def test_refresh_leaves_a_not_paid_row_alone(self):
+        db.session.add(Payment(creator_id=self.bea.id, campaign_id=self.camp.id,
+                               status="not_paid", base_cents=0, referrals=0))
+        db.session.commit()
+        payments.refresh(self.camp, TODAY)
+        self.assertEqual(self.pay(self.bea).status, "not_paid")
+
 
 class ReferralTests(Base):
     def test_the_checksum_is_enforced(self):

@@ -184,7 +184,7 @@ def first_posted_on(creator, campaign):
 
 def refresh(campaign, today, now=None):
     """Create or update the payment for everyone who delivered. Never
-    touches a paid one. Returns (created, updated, undated creator names)."""
+    touches a paid one, or one Erin decided not to pay. Returns (created, updated, undated creator names)."""
     from datetime import timedelta
     from models import Payment
 
@@ -202,6 +202,8 @@ def refresh(campaign, today, now=None):
                           per_referral_cents=rule["per_referral_cents"], updated_at=now)
             db.session.add(row)
             created += 1
+        if row.status == "not_paid":
+            continue                      # Erin's decision; never re-statused
         if row.status == "paid":
             # Never re-dated or re-statused once paid; a paid row that was
             # marked before tracking began only gets the window it lacks,

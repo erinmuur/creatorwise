@@ -922,6 +922,19 @@ site comes back through `push_data.py` like payment details do.
   `data/creatorwise.db.bak-merge`; its old photo still sits on the server,
   unused). One creator posted but has no piece on file yet, so his
   payment has no date.
+- **CAC** (customer acquisition cost) is on each creator's tile on the
+  Announcement page (`Campaign.cac_for`): what they were paid — base +
+  their 14-day bonus, from their `Payment` — divided by their referrals for
+  the whole campaign (`referrals_for`). Asked for by Erin's co-founder,
+  2026-11-23; only campaigns in `PAY_RULES` show it. It reads "after
+  <date>" until the bonus window closes and is counted, "no referrals"
+  for zero, "not dated yet" without a first-post date. So paid rows get
+  counted too: `refresh` gives a paid row the window it lacks (never its
+  status), and `referral-sql` / `referral-load` cover paid as well as
+  pending. 2026-11-23: the 36 undated pieces of paid creators were dated
+  as above, and 37 bonus counts loaded; blended CAC $6.50 over 58
+  creators. Instagram posts added by email are not dated by the content
+  job — date them from the post page's `<time datetime>`.
 - **Replies with details**: Claude doesn't enter bank numbers, and doesn't
   read replies to copy them. The daily task lists who has replied (Gmail
   metadata only: sender and date), and Erin saves each reply (.eml via

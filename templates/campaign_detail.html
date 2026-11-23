@@ -113,6 +113,18 @@
       <div class="ugc-stats">
         <span title="{{ g.creator.name }}'s referrals for this campaign{% if campaign.referral_window_label %}, {{ campaign.referral_window_label }}{% endif %}"><b>{{ (g.referrals | thousands) if g.referrals is not none else "—" }}</b> referrals</span>
       </div>
+      {% set cac = campaign.cac_for(g.creator) %}
+      {% if cac %}
+      <p class="ugc-cac">
+        {% if cac.state == "ok" %}
+        <span title="Paid {{ cac.paid_cents | money }} ($100 + $5 per referral in the 14 days after their first post) ÷ {{ cac.referrals | thousands }} referrals this campaign"><b>{{ cac.cents | money }}</b> CAC (customer acquisition cost)</span>
+        {% elif cac.state == "no_referrals" %}
+        <span title="Paid {{ cac.paid_cents | money }}, no referrals this campaign"><b>—</b> CAC (customer acquisition cost) · no referrals</span>
+        {% else %}
+        <span title="The payment includes a bonus for referrals in the 14 days after their first post; it's counted once that window closes"><b>—</b> CAC (customer acquisition cost) · {% if cac.counted_after %}after {{ cac.counted_after | shortdate }}{% else %}not dated yet{% endif %}</span>
+        {% endif %}
+      </p>
+      {% endif %}
     </a>
     {% else %}
     <p class="empty">No content delivered yet.</p>

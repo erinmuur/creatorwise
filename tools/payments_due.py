@@ -91,8 +91,9 @@ def long_date(d):
 # --- referrals over each creator's own window -------------------------------------
 
 def to_count(payments, today):
-    """Pending payments whose window has closed and whose count isn't in."""
-    return [p for p in payments if p.status == "pending" and p.referral_to
+    """Pending or paid payments whose window has closed and whose count isn't
+    in. Paid ones are counted too: CAC needs what they were paid."""
+    return [p for p in payments if p.status in ("pending", "paid") and p.referral_to
             and p.referral_to < today and p.referrals is None]
 
 
@@ -329,7 +330,7 @@ def main(argv=None):
                 print("(dry run — nothing written. Re-run with --apply.)")
                 return 0
             for p in Payment.query.filter(Payment.creator_id.in_(counts)).all():
-                if p.status == "pending" and p.referrals is None:
+                if p.status in ("pending", "paid") and p.referrals is None:
                     p.referrals = counts[p.creator_id]
                     p.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.session.commit()

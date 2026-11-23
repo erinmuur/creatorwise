@@ -589,6 +589,33 @@ class Campaign(db.Model):
         mine = [p for p in self.ugc if creator in p.creators and p.referral_snapshots]
         return sum(p.referrals for p in mine) if mine else None
 
+    def cac_for(self, creator):
+        """Customer acquisition cost for one creator in this campaign: what
+        they were paid (base + their 14-day referral bonus, from their
+        Payment) divided by their referrals for the whole campaign.
+
+        Returns {"state": ..., "cents": ..., "paid_cents": ..., "referrals": ...}
+        or None when this campaign pays nobody. States: "ok"; "no_referrals"
+        (paid, nobody signed up — no cost per customer to state); "pending"
+        (their bonus isn't counted yet, so the cost isn't known)."""
+        if not self.pays_creators:
+            return None
+        pay = Payment.query.filter_by(creator_id=creator.id, campaign_id=self.id).first()
+        if pay is None or not pay.amount_known:
+            return {"state": "pending", "cents": None, "paid_cents": None, "referrals": None,
+                    "counted_after": pay.referral_to if pay else None}
+        referrals = self.referrals_for(creator) or 0
+        if referrals == 0:
+            return {"state": "no_referrals", "cents": None, "paid_cents": pay.total_cents,
+                    "referrals": 0}
+        return {"state": "ok", "cents": round(pay.total_cents / referrals),
+                "paid_cents": pay.total_cents, "referrals": referrals}
+
+    @property
+    def pays_creators(self):
+        import payments
+        return self.slug in payments.PAY_RULES
+
     def pieces_by(self, creator):
         """What this creator made in this campaign, lead or collaborator, newest first."""
         mine = [p for p in self.ugc if creator in p.creators]

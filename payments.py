@@ -203,6 +203,19 @@ def refresh(campaign, today, now=None):
             db.session.add(row)
             created += 1
         if row.status == "paid":
+            # Never re-dated or re-statused once paid; a paid row that was
+            # marked before tracking began only gets the window it lacks,
+            # so its bonus can be counted (for CAC).
+            if row.first_posted_on is None:
+                first = first_posted_on(part.creator, campaign)
+                if first:
+                    row.first_posted_on = first
+                    row.due_on = first + timedelta(days=PAY_AFTER_DAYS)
+                    row.referral_from = first
+                    row.referral_to = first + timedelta(days=rule["window_days"] - 1)
+                    updated += 1
+                else:
+                    undated.append(part.creator.name)
             continue
         first = first_posted_on(part.creator, campaign)
         if first is None:

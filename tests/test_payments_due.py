@@ -94,6 +94,37 @@ class RefreshTests(Base):
         self.assertEqual((bea.total_cents, payments.money(bea.total_cents)), (16000, "$160"))
 
 
+class CacTests(Base):
+    def test_cost_per_campaign_referral(self):
+        from models import CampaignReferral
+        payments.refresh(self.camp, TODAY)
+        bea = self.pay(self.bea)
+        bea.referrals = 4                                   # bonus window: $100 + 4 x $5
+        db.session.add(CampaignReferral(campaign_id=self.camp.id, creator_id=self.bea.id,
+                                        referrals=40))
+        db.session.commit()
+        cac = self.camp.cac_for(self.bea)
+        self.assertEqual((cac["state"], cac["cents"], cac["paid_cents"]), ("ok", 300, 12000))
+
+    def test_paid_rows_get_a_window_but_keep_their_status(self):
+        payments.refresh(self.camp, TODAY)
+        bea = self.pay(self.bea)
+        payments.mark_paid(bea, date(2026, 11, 16))
+        bea.first_posted_on = bea.referral_from = bea.referral_to = bea.due_on = None
+        db.session.commit()
+        payments.refresh(self.camp, TODAY)
+        self.assertEqual((bea.status, bea.referral_from), ("paid", date(2026, 11, 1)))
+        self.assertIn(bea, pd.to_count([bea], TODAY))       # its bonus can be counted
+
+    def test_no_referrals_and_uncounted_say_so(self):
+        payments.refresh(self.camp, TODAY)
+        self.assertEqual(self.camp.cac_for(self.pax)["state"], "pending")   # bonus not counted
+        self.pay(self.bea).referrals = 0
+        self.assertEqual(self.camp.cac_for(self.bea)["state"], "no_referrals")
+        other = Campaign(name="Unpaid", slug="unpaid")
+        self.assertIsNone(other.cac_for(self.bea))
+
+
 class ReferralTests(Base):
     def test_the_checksum_is_enforced(self):
         good = {"rows": [[None, 5], [1, 3], [3, 2]]}

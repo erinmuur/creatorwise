@@ -135,3 +135,19 @@ Then `tools/import_media.py` files what arrived (its duplicate guards apply),
 `content_requests.py finish` sets a title: the first sentence of 6–18 words
 that isn't a greeting, quoted. Machine-picked titles can be off; the run
 summary lists each one so they can be fixed by hand.
+
+## Dating the posts
+
+A piece's date is its earliest post's, and the creator's first-post date
+drives their payment due date, their referral-bonus window and their CAC.
+A TikTok link with a post id dates itself (the top 32 bits of the id are
+the Unix second). Instagram links, TikTok short links (`/t/…`) and YouTube
+links carry no date, so after capture the job runs
+
+    content_requests.py undated                      # emailed posts with no date
+    content_requests.py date --post N --when VALUE   # store one
+
+reading `VALUE` off the post page in the pane, muted: Instagram's
+`<time datetime>`, the URL a TikTok short link lands on, or YouTube's
+`datePublished`. Dates are UTC. Anything that isn't a date is refused
+("NOT DATED") and left for the report.

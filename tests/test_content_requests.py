@@ -316,5 +316,43 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(again, [])
 
 
+class DatingTests(PlanTests):
+    def piece(self, *urls):
+        piece = UgcPiece(creator_id=self.bea.id, campaign_id=self.ann.id, discovered_via="email")
+        db.session.add(piece)
+        db.session.flush()
+        for u in urls:
+            piece.posts.append(PlatformPost(platform="tiktok" if "tiktok" in u else "instagram",
+                                            url=u, posted_on=cr.tiktok_posted_on(u)))
+        db.session.flush()
+        return piece
+
+    def test_undated_lists_instagram_and_short_links(self):
+        self.piece("https://www.instagram.com/reel/AbC_12-x/", "https://www.tiktok.com/t/ZT8abc/")
+        self.piece(f"https://www.tiktok.com/@bealune/video/{TT_ID}")     # dates itself
+        self.assertEqual([u["platform"] for u in cr.undated(MODELS)], ["instagram", "tiktok"])
+
+    def test_a_page_timestamp_dates_the_post_and_the_piece(self):
+        piece = self.piece("https://www.instagram.com/reel/AbC_12-x/")
+        day = cr.date_post(piece.posts[0], "2026-11-20T23:30:00.000Z")   # UTC, as read
+        self.assertEqual((day, piece.posted_on), (date(2026, 11, 20), date(2026, 11, 20)))
+
+    def test_the_piece_takes_its_earliest_post(self):
+        piece = self.piece("https://www.instagram.com/reel/AbC_12-x/",
+                           f"https://www.tiktok.com/@bealune/video/{TT_ID}")
+        cr.date_post(piece.posts[0], "2026-11-20T10:00:00Z")
+        self.assertEqual(piece.posted_on, date(2026, 11, 18))           # the TikTok's
+        short = self.piece("https://www.tiktok.com/t/ZT8abc/")
+        cr.date_post(short.posts[0], f"https://www.tiktok.com/@bealune/video/{TT_ID}?_r=1")
+        self.assertEqual(short.posted_on, date(2026, 11, 18))
+
+    def test_nonsense_is_refused(self):
+        piece = self.piece("https://www.tiktok.com/t/ZT8abc/")
+        for bad in ("yesterday", "https://www.tiktok.com/t/ZT8abc/"):
+            with self.assertRaises(ValueError):
+                cr.date_post(piece.posts[0], bad)
+        self.assertIsNone(piece.posted_on)
+
+
 if __name__ == "__main__":
     unittest.main()

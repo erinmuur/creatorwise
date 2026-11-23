@@ -846,6 +846,13 @@ guide: `docs/content-by-email.md`.
   with `[creatorwise job]` and the tool skips that marker and anything not
   sent to the tagged address — otherwise its own replies, which sit in the
   same threads from the same sender, would loop.
+- **Every emailed post gets a date** (2026-11-23). A TikTok link with an
+  id dates itself; Instagram posts and TikTok short links don't, so the
+  job's step 6b runs `content_requests.py undated`, reads each page in the
+  pane (muted) — Instagram's `<time datetime>`, the URL a short link lands
+  on, YouTube's `datePublished` — and stores it with `content_requests.py
+  date --post N --when VALUE` (UTC date; the piece takes its earliest
+  post's). Undated, a creator has no payment due date and no CAC.
 - Processed mail ids live in `data/content-requests.json`; a line per run in
   `data/content-requests.log`.
 - First run, 2026-11-19: piece 201 (new, with Erin's file) and an Instagram
@@ -933,8 +940,7 @@ site comes back through `push_data.py` like payment details do.
   status), and `referral-sql` / `referral-load` cover paid as well as
   pending. 2026-11-23: the 36 undated pieces of paid creators were dated
   as above, and 37 bonus counts loaded; blended CAC $6.50 over 58
-  creators. Instagram posts added by email are not dated by the content
-  job — date them from the post page's `<time datetime>`.
+  creators. Emailed posts are dated by the content job (below).
 - **Replies with details**: Claude doesn't enter bank numbers, and doesn't
   read replies to copy them. The daily task lists who has replied (Gmail
   metadata only: sender and date), and Erin saves each reply (.eml via

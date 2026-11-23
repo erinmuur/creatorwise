@@ -797,6 +797,44 @@ def pending(models, media_root, inbox_root):
     return out
 
 
+def undated(models):
+    """Emailed posts with no date. A TikTok link with an id dates itself;
+    an Instagram post or a TikTok short link has to be read off its page
+    (the post's own <time datetime>, or the id in the URL it redirects to).
+    Without it the creator has no first-post date: no payment due date, no
+    referral bonus window, no CAC. Posts already found gone are left out."""
+    UgcPiece = models["UgcPiece"]
+    out = []
+    for piece in UgcPiece.query.filter_by(discovered_via="email").order_by(UgcPiece.id):
+        for post in piece.posts:
+            if post.posted_on or getattr(post, "read_status", None) == "unavailable":
+                continue
+            out.append({"post": post.id, "piece": piece.id, "creator": piece.creator.name,
+                        "platform": post.platform, "url": post.url})
+    return out
+
+
+def date_post(post, when):
+    """Store a post's date from its page: an ISO timestamp (Instagram's
+    <time datetime>, YouTube's datePublished) or a TikTok URL with an id.
+    Dates are UTC, like the ones read from TikTok ids. The piece takes its
+    earliest post's date. Returns the date, or raises ValueError."""
+    from datetime import datetime as dt, timezone as tz
+    day = tiktok_posted_on(when) if "tiktok.com" in when else None
+    if day is None and "tiktok.com" not in when:
+        try:
+            stamp = dt.fromisoformat(when.strip().replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError(f"not a date or a TikTok URL with an id: {when!r}")
+        day = (stamp.astimezone(tz.utc) if stamp.tzinfo else stamp).date()
+    if day is None:
+        raise ValueError("that TikTok URL has no post id — open it and use the URL it lands on")
+    post.posted_on = day
+    known = [p.posted_on for p in post.piece.posts if p.posted_on]
+    post.piece.posted_on = min(known)
+    return day
+
+
 # --- CLI ----------------------------------------------------------------------
 
 def render(results, ignored):
@@ -846,11 +884,14 @@ def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["links", "plan", "apply", "finish", "pending"])
+    parser.add_argument("command", choices=["links", "plan", "apply", "finish", "pending",
+                                            "undated", "date"])
     parser.add_argument("file", nargs="?")
     parser.add_argument("--sender", help="only mail from this address is acted on")
     parser.add_argument("--out", help="apply: where to write the capture list")
     parser.add_argument("--pieces", help="finish: comma-separated piece ids")
+    parser.add_argument("--post", type=int, help="date: the post id from `undated`")
+    parser.add_argument("--when", help="date: <time datetime> value, or the TikTok URL it lands on")
     args = parser.parse_args(argv)
 
     import app as appmod
@@ -870,6 +911,23 @@ def main(argv=None):
         if args.command == "pending":
             print(json.dumps({"captures": pending(models, media.directory(uri), media.inbox(uri))},
                              indent=1))
+            return 0
+        if args.command == "undated":
+            print(json.dumps({"undated": undated(models)}, indent=1))
+            return 0
+        if args.command == "date":
+            if not args.post or not args.when:
+                parser.error("date needs --post and --when")
+            post = db.session.get(PlatformPost, args.post)
+            if post is None:
+                parser.error(f"no post {args.post}")
+            try:
+                day = date_post(post, args.when)
+            except ValueError as error:
+                print(f"NOT DATED: {error}")
+                return 1
+            db.session.commit()
+            print(f"post {post.id} (piece {post.piece.id}): {day}; piece dated {post.piece.posted_on}")
             return 0
         if not args.file or not args.sender:
             parser.error("links/plan/apply need FILE and --sender")

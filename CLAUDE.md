@@ -938,7 +938,20 @@ site comes back through `push_data.py` like payment details do.
   for zero, "not dated yet" without a first-post date. The page's
   top row adds **Blended CAC** (`Campaign.blended_cac`): total paid ÷
   those same creators' campaign referrals, over creators whose bonus is
-  counted (zero-referral ones included — their cost had no return). So paid rows get
+  counted (zero-referral ones included — their cost had no return).
+- **The softlaunch has CAC too, from invoices** (2026-11-23). It paid $100
+  + $10 per 1,000 impressions, outside creatorwise, so it is not in
+  `PAY_RULES`; Erin's 40 invoice files gave 38 `Payment` rows (status
+  `paid`, `base_cents` = the invoice total, `referrals` 0, the breakdown in
+  `note`). One creator's invoice was saved twice under two titles, and one
+  creator had a second, inconsistent copy — Erin confirmed which to use;
+  six names on invoices differ from the record's (short forms, a spelling,
+  a different surname for 220), matched on her word. `has_pay_rules`
+  separates the two kinds: the Payments page lists only rule-based
+  campaigns, and a softlaunch creator with no invoice reads "no invoice on
+  file". Only the amounts were read from the invoices (a script masked
+  every other digit); nothing else was stored. Blended $14.38 ($7,016 ÷
+  488 referrals, 38 of 43 creators). So paid rows get
   counted too: `refresh` gives a paid row the window it lacks (never its
   status), and `referral-sql` / `referral-load` cover paid as well as
   pending. 2026-11-23: the 36 undated pieces of paid creators were dated

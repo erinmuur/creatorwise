@@ -382,7 +382,9 @@ def money_filter(cents):
 
 @app.route("/payments")
 def payments_page():
-    rows = Payment.query.all()
+    # Only campaigns whose payments creatorwise works out; ones paid from
+    # invoices outside it (the softlaunch) are there for CAC, not this page.
+    rows = [p for p in Payment.query.all() if p.campaign.has_pay_rules]
     by_status = {s: [] for s in ("pending", "upcoming", "paid")}
     for p in rows:
         by_status.setdefault(p.status, []).append(p)

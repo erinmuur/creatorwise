@@ -597,10 +597,14 @@ class Campaign(db.Model):
         Returns {"state": ..., "cents": ..., "paid_cents": ..., "referrals": ...}
         or None when this campaign pays nobody. States: "ok"; "no_referrals"
         (paid, nobody signed up — no cost per customer to state); "pending"
-        (their bonus isn't counted yet, so the cost isn't known)."""
+        (their bonus isn't counted yet, so the cost isn't known);
+        "no_invoice" (a campaign paid outside creatorwise, like the
+        softlaunch, with no invoice on file for them)."""
         if not self.pays_creators:
             return None
         pay = Payment.query.filter_by(creator_id=creator.id, campaign_id=self.id).first()
+        if not self.has_pay_rules and (pay is None or not pay.amount_known):
+            return {"state": "no_invoice", "cents": None, "paid_cents": None, "referrals": None}
         if pay is None or not pay.amount_known:
             return {"state": "pending", "cents": None, "paid_cents": None, "referrals": None,
                     "counted_after": pay.referral_to if pay else None}
@@ -631,9 +635,17 @@ class Campaign(db.Model):
                 "counted": len(known), "creators": len(rows)}
 
     @property
-    def pays_creators(self):
+    def has_pay_rules(self):
+        """creatorwise works out what's owed (payments.PAY_RULES)."""
         import payments
         return self.slug in payments.PAY_RULES
+
+    @property
+    def pays_creators(self):
+        """Has pay rules, or payments on file from invoices (the softlaunch:
+        $100 + $10 per 1,000 impressions, paid outside creatorwise)."""
+        return self.has_pay_rules or (
+            self.id is not None and Payment.query.filter_by(campaign_id=self.id).first() is not None)
 
     def pieces_by(self, creator):
         """What this creator made in this campaign, lead or collaborator, newest first."""

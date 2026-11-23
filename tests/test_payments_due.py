@@ -138,6 +138,27 @@ class CacTests(Base):
         self.assertEqual((b["paid_cents"], b["referrals"], b["cents"], b["counted"]),
                          (22000, 40, 550, 2))
 
+    def test_a_campaign_paid_from_invoices(self):
+        from models import CampaignReferral
+        soft = Campaign(name="Bookwise Softlaunch", slug="bookwise-softlaunch")
+        db.session.add(soft)
+        db.session.flush()
+        self.assertFalse(soft.pays_creators)                # nothing on file: no CAC at all
+        for c in (self.bea, self.pax):
+            db.session.add(Participation(creator_id=c.id, campaign_id=soft.id,
+                                         status="content_delivered"))
+            db.session.add(UgcPiece(creator_id=c.id, campaign_id=soft.id))
+        db.session.add(Payment(creator_id=self.bea.id, campaign_id=soft.id, status="paid",
+                               base_cents=24100, per_referral_cents=0, referrals=0))
+        db.session.add(CampaignReferral(campaign_id=soft.id, creator_id=self.bea.id, referrals=10))
+        db.session.commit()
+        self.assertTrue(soft.pays_creators and not soft.has_pay_rules)
+        self.assertEqual(soft.cac_for(self.bea)["cents"], 2410)          # $241 / 10
+        self.assertEqual(soft.cac_for(self.pax)["state"], "no_invoice")
+        self.assertEqual(soft.blended_cac["counted"], 1)
+        payments.refresh(self.camp, TODAY)                                # leaves it alone
+        self.assertEqual(Payment.query.filter_by(campaign_id=soft.id).count(), 1)
+
 
 class ReferralTests(Base):
     def test_the_checksum_is_enforced(self):

@@ -147,7 +147,7 @@ def motion_box(video, start, duration, aspect, scale=4):
         if best is None or score < best[0]:
             best = (score, x0, y0, bw, bh)
     if best is None:
-        return None
+        return dark_box(frames, aspect, scale)
     _, x0, y0, bw, bh = best
     # Trim the 2-cell growth back off each side.
     x0, y0, bw, bh = x0 + 2, y0 + 2, max(bw - 4, 2), max(bh - 4, 2)
@@ -168,6 +168,31 @@ def motion_box(video, start, duration, aspect, scale=4):
         else:
             d -= 1
     x0, y0, bw, bh = x0 + a, y0 + c, b - a, d - c
+    x, y, cw, ch = x0 * scale, y0 * scale, bw * scale, bh * scale
+    return int(x), int(y), int(cw - cw % 2), int(ch - ch % 2)
+
+
+def dark_box(frames, aspect, scale):
+    """Fallback for a reel that barely moves as a whole — say a still black
+    card with a small moving picture in one corner (piece 209, 2026-11-23).
+    Instagram shows every reel in a black frame on a light page, so the
+    frame itself is a dark region with the reel's shape: the largest one
+    whose outline matches is the reel."""
+    import numpy as np
+    sh, sw = frames.shape[1:]
+    dark = np.median(frames, axis=0) < 30
+    best = None
+    for x0, y0, x1, y1, n in _components(dark):
+        bw, bh = x1 - x0 + 1, y1 - y0 + 1
+        if bw * bh < 0.02 * sw * sh:
+            continue
+        if abs(np.log((bw / bh) / aspect)) > 0.05:
+            continue
+        if best is None or bw * bh > best[2] * best[3]:
+            best = (x0, y0, bw, bh)
+    if best is None:
+        return None
+    x0, y0, bw, bh = best
     x, y, cw, ch = x0 * scale, y0 * scale, bw * scale, bh * scale
     return int(x), int(y), int(cw - cw % 2), int(ch - ch % 2)
 

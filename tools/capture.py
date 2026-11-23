@@ -196,10 +196,10 @@ def record_finish(tag, playing, duration, folder, aspect):
         die("the reel started playing before the recording did — record again")
     box = motion_box(video, offset, duration, aspect)
     if box is None:
-        os.unlink(video)
-        os.unlink(log)
-        die("couldn't find the playing reel in the recording — the browser pane has to be "
-            "on screen while it plays (a hidden pane isn't drawn)")
+        # Kept, so a fix can re-run record-finish without playing the reel again.
+        die("couldn't find the playing reel in the recording — this conversation and its "
+            "browser pane have to be on screen while it plays (with another conversation "
+            f"showing, the pane isn't drawn). Raw take kept: {video}")
     x, y, w, h = box
     os.makedirs(folder, exist_ok=True)
     out = os.path.join(folder, "recording.mp4")

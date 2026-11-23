@@ -944,6 +944,9 @@ site comes back through `push_data.py` like payment details do.
   On 2026-11-23 Erin had the expired story removed (piece 099, its post
   and link deleted), so creator 56's first post counts from Oct 28, and
   creator 103's taken-down reel (139) was dated Oct 29 on her word.
+  Creator 232's post arrived the same day as a link from Erin: piece 211,
+  a 4-slide Instagram carousel (screenshots, likes hidden), Oct 29 — which
+  gave his payment a date, his bonus (2) and invoice 1009.
 - **Replies with details**: Claude doesn't enter bank numbers, and doesn't
   read replies to copy them. The daily task lists who has replied (Gmail
   metadata only: sender and date), and Erin saves each reply (.eml via

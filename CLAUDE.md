@@ -935,7 +935,10 @@ site comes back through `push_data.py` like payment details do.
   the whole campaign (`referrals_for`). Asked for by Erin's co-founder,
   2026-11-23; only campaigns in `PAY_RULES` show it. It reads "after
   <date>" until the bonus window closes and is counted, "no referrals"
-  for zero, "not dated yet" without a first-post date. So paid rows get
+  for zero, "not dated yet" without a first-post date. The page's
+  top row adds **Blended CAC** (`Campaign.blended_cac`): total paid ÷
+  those same creators' campaign referrals, over creators whose bonus is
+  counted (zero-referral ones included — their cost had no return). So paid rows get
   counted too: `refresh` gives a paid row the window it lacks (never its
   status), and `referral-sql` / `referral-load` cover paid as well as
   pending. 2026-11-23: the 36 undated pieces of paid creators were dated

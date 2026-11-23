@@ -612,6 +612,25 @@ class Campaign(db.Model):
                 "paid_cents": pay.total_cents, "referrals": referrals}
 
     @property
+    def blended_cac(self):
+        """Total paid ÷ total campaign referrals, over the creators whose cost
+        is known (bonus counted) — spend and referrals from the same people,
+        so creators still in their bonus window don't skew it either way.
+        Paid creators with no referrals count: their cost had no return.
+        None when this campaign pays nobody or nothing is counted yet."""
+        if not self.pays_creators:
+            return None
+        rows = [self.cac_for(g.creator) for g in self.creator_groups]
+        known = [r for r in rows if r and r["state"] in ("ok", "no_referrals")]
+        paid = sum(r["paid_cents"] for r in known)
+        referrals = sum(r["referrals"] for r in known)
+        if not known:
+            return None
+        return {"cents": round(paid / referrals) if referrals else None,
+                "paid_cents": paid, "referrals": referrals,
+                "counted": len(known), "creators": len(rows)}
+
+    @property
     def pays_creators(self):
         import payments
         return self.slug in payments.PAY_RULES

@@ -124,6 +124,20 @@ class CacTests(Base):
         other = Campaign(name="Unpaid", slug="unpaid")
         self.assertIsNone(other.cac_for(self.bea))
 
+    def test_blended_cac_covers_counted_creators_only(self):
+        from models import CampaignReferral
+        payments.refresh(self.camp, TODAY)
+        self.pay(self.bea).referrals = 4                    # $120, 40 campaign referrals
+        self.pay(self.juno).referrals = 0                   # $100, no referrals: still a cost
+        db.session.add(CampaignReferral(campaign_id=self.camp.id, creator_id=self.bea.id,
+                                        referrals=40))
+        db.session.add(CampaignReferral(campaign_id=self.camp.id, creator_id=self.pax.id,
+                                        referrals=10))      # bonus not counted: left out
+        db.session.commit()
+        b = self.camp.blended_cac
+        self.assertEqual((b["paid_cents"], b["referrals"], b["cents"], b["counted"]),
+                         (22000, 40, 550, 2))
+
 
 class ReferralTests(Base):
     def test_the_checksum_is_enforced(self):

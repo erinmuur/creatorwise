@@ -252,9 +252,12 @@ def refresh(campaign, today, now=None):
         if first is None:
             undated.append(part.creator.name)
         changed = (row.first_posted_on != first)
+        widened = (not changed and first and row.referral_from and row.referral_from < first)
         row.first_posted_on = first
         row.due_on = first + timedelta(days=PAY_AFTER_DAYS) if first else None
-        row.referral_from = first
+        # A window Erin widened back by hand (signups that came before the
+        # post on file, 2026-11-24) is kept until the first post itself moves.
+        row.referral_from = row.referral_from if widened else first
         row.referral_to = first + timedelta(days=rule["window_days"] - 1) if first else None
         if changed:
             row.referrals = None          # a new window needs a new count

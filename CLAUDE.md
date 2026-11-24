@@ -930,6 +930,12 @@ site comes back through `push_data.py` like payment details do.
   `datePublished` — all UTC dates, like the TikTok ones. One
   creator's first Announcement piece (111) is dated Oct 26, two days
   before the campaign; it counts from then.
+- **A bonus window can start before the first post** when Erin says so
+  (2026-11-24): two creators had signups from sharing their link before
+  the post on file (stories, an earlier post), so their windows were set to
+  Oct 20 → first post + 13 days and recounted (notes on each `Payment`).
+  `refresh` keeps a `referral_from` earlier than the first post until the
+  first-post date itself changes.
 - The bonus is counted once the window has closed: `referral-sql` writes one
   query over each creator's own window (shared addresses left out), with a
   ROLLUP checksum; `referral-load` refuses a result that doesn't add up.

@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
-from datetime import date, datetime
+from datetime import date, timedelta, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -180,6 +180,16 @@ class CacTests(Base):
         self.assertEqual((cac["state"], cac["paid_cents"], cac["referrals"]), ("not_paid", 0, 2))
         blended = soft.blended_cac                         # $100 / (8 + 2)
         self.assertEqual((blended["cents"], blended["counted"]), (1000, 2))
+
+    def test_a_window_widened_by_hand_survives_refresh(self):
+        payments.refresh(self.camp, TODAY)
+        row = self.pay(self.bea)
+        start = row.referral_from
+        row.referral_from, row.referrals = start - timedelta(days=10), 9
+        db.session.commit()
+        payments.refresh(self.camp, TODAY)
+        row = self.pay(self.bea)
+        self.assertEqual((row.referral_from, row.referrals), (start - timedelta(days=10), 9))
 
     def test_refresh_leaves_a_not_paid_row_alone(self):
         db.session.add(Payment(creator_id=self.bea.id, campaign_id=self.camp.id,

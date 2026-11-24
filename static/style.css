@@ -190,7 +190,11 @@ main { max-width: 1120px; margin: 0 auto; padding: var(--space-32) var(--space-1
 .campaign-card:hover .campaign-name { color: var(--interactive-text); }
 .campaign-name { font-size: 16px; font-weight: 600; margin: 0; }
 .campaign-dates { font-size: 12px; color: var(--text-secondary); margin: var(--space-4) 0 var(--space-16); }
-.campaign-metrics { display: flex; gap: var(--space-20); }
+/* Two rows of two: four in a row overflowed the card at common widths. */
+.campaign-metrics {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-12) var(--space-20);
+}
 .campaign-metrics div { font-size: 12px; color: var(--text-secondary); }
 .campaign-metrics strong { display: block; font-size: 16px; color: var(--text-primary); font-weight: 600; }
 

@@ -35,6 +35,7 @@ _(Project purpose: fill this in — it's the most useful line in this file.)_
 | `payments.py` | creators' payment details: form checks, and merging live-site edits back |
 | `tools/import_invoices.py` | Erin runs it: payment details from creators' PDF invoices (masked preview, `--apply`) |
 | `tools/pdf_text.swift` | PDF text via PDFKit, Vision for scanned pages; built by import_invoices.py |
+| `tools/outreach.py` | who Erin emailed about a campaign, who opted in (daily job) |
 | `tools/payments_due.py` | who's due, referral bonus, invoices, Superhuman draft data (daily job) |
 | `tools/invoice_pdf.swift` | renders one invoice PDF from a JSON spec on stdin |
 | `tools/push_data.py` | send the local DB, media and photos to the server |
@@ -857,6 +858,31 @@ guide: `docs/content-by-email.md`.
   `data/content-requests.log`.
 - First run, 2026-11-19: piece 201 (new, with Erin's file) and an Instagram
   reel added to 190 as its cross-post (same 240.3s readathon video).
+
+## Recruiting by email (Year End Campaign)
+
+**Year End Campaign** (`year-end-campaign`, created 2026-11-24): Dec 8 2026 –
+Jan 31 2027, status `planned` until it starts. Terms, from Erin's outreach
+email: $100 base + $5 per sign-up in the 2 weeks after posting, plus $100 at
+50K views or $500 at 250K. It is **not in `payments.PAY_RULES` yet** — the
+view bonus needs engagement readings, which nothing loads automatically.
+
+Erin recruits with one email thread per creator. `tools/outreach.py` takes
+`{campaign, contacts: [{email, name, thread, contacted_on, reply, ...}]}`,
+where `reply` (`opted_in` / `declined` / `unclear` / `none`) is the reading
+of the creator's reply, and records `contacted` or `opted_in`. It matches on
+addresses only (creator_emails and the primary) — an unknown address is held
+as "not on file", a shared one as ambiguous, and a first name never counts.
+Statuses only move forward; briefed or delivered is never touched. Re-running
+over the same threads is a no-op, so the job hands over every thread each day.
+
+A Claude desktop scheduled task, `creatorwise-outreach` (19:00 daily, through
+2026-12-08 at Erin's request; prompt in
+`~/.claude/scheduled-tasks/creatorwise-outreach/`), finds the threads in
+Superhuman (read-only), judges each reply, runs the tool and uploads. Some of
+the emails also ask for an Announcement grid post by Dec 4: a yes to that
+alone is not an opt-in. First run 2026-11-24, by hand: 58 emailed (all on
+file), 14 opted in. `data/outreach.log` has a line per run.
 
 ## Payment details
 

@@ -284,6 +284,23 @@ class VideoReferralDisplayTests(unittest.TestCase):
             self.assertIn("Oct 28, 2026 – ongoing", html, url)
             self.assertNotIn("– —", html, url)
 
+    def test_an_organic_campaign_has_no_outreach_funnel(self):
+        """Unprompted posts: nobody was contacted or opted in, so neither shows."""
+        from models import Campaign, db
+        for url in ("/campaigns/spring-pilot", "/campaigns", "/"):
+            html = self.client.get(url).get_data(as_text=True)
+            self.assertIn("contacted", html.lower(), url)
+        with appmod.app.app_context():
+            Campaign.query.filter_by(slug="spring-pilot").one().slug = "organic-plugs"
+            db.session.commit()
+        for url in ("/campaigns/organic-plugs", "/campaigns", "/"):
+            html = self.client.get(url).get_data(as_text=True)
+            self.assertNotIn("contacted", html.lower(), url)
+            self.assertNotIn("opted in", html.lower(), url)
+            self.assertIn("delivered", html.lower(), url)
+        self.assertIn("posted unprompted",
+                      self.client.get("/campaigns/organic-plugs").get_data(as_text=True))
+
     def test_a_profiles_campaign_row_opens_that_creators_content(self):
         """Several pieces: their content for the campaign. One: the piece
         itself. None: the campaign page, as there is nothing of theirs."""

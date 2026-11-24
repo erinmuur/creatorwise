@@ -236,7 +236,7 @@ in the announcement but not the softlaunch, and they are skipped, not counted.
 **Organic Plugs** (`organic-plugs`, created 2026-11-16) is for creators who
 post about the app unprompted. It runs from Oct 28 2026 with no end date
 (Erin, 2026-11-16) and reads "ongoing"; with no end, its referral total
-always says "(so far)". Referrals through Nov 17: 211, nearly all from
+always says "(so far)". Nobody is contacted or asked to opt in, so its cards and page show no contacted / opted-in figures (`ORGANIC_CAMPAIGNS` in models.py, `Campaign.is_organic`; Erin, 2026-11-24). Referrals through Nov 17: 211, nearly all from
 one creator (307). Its first
 creator (306) was found by her Readwise Books username, at Erin's request:
 Erin's contextone query to the Readwise production database

@@ -89,6 +89,9 @@ PARTICIPATION_LABELS = {
     "no_show": "No show",
 }
 
+# Campaigns of unprompted posts: no outreach, so no contacted / opted-in funnel.
+ORGANIC_CAMPAIGNS = ("organic-plugs",)
+
 # Statuses that mean we are still expecting content from them.
 PENDING_STATUSES = ("opted_in", "wave_2", "briefed")
 
@@ -641,6 +644,13 @@ class Campaign(db.Model):
         return {"cents": round(paid / referrals) if referrals else None,
                 "paid_cents": paid, "referrals": referrals,
                 "counted": len(known), "creators": len(rows)}
+
+    @property
+    def is_organic(self):
+        """Creators who post about us unprompted. Nobody was contacted or
+        asked to opt in, so the outreach funnel means nothing here and the
+        pages leave it out."""
+        return self.slug in ORGANIC_CAMPAIGNS
 
     @property
     def has_pay_rules(self):

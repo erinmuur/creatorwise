@@ -15,8 +15,10 @@
     <p class="campaign-dates">{% if c.starts_on or c.ends_on %}{{ c.starts_on | shortdate }} – {{ (c.ends_on | shortdate) if c.ends_on else "ongoing" }}{% else %}Dates not set{% endif %}</p>
     {% if c.description %}<p class="row-sub" style="margin: 0 0 var(--space-16)">{{ c.description }}</p>{% endif %}
     <div class="campaign-metrics">
+      {% if not c.is_organic %}
       <div><strong>{{ c.contacted_count }}</strong> contacted</div>
       <div><strong>{{ c.commitment_count }}</strong> {{ c.commitment_label | lower }}</div>
+      {% endif %}
       <div><strong>{{ c.delivered_count }}</strong> delivered</div>
       <div><strong>{{ c.total_referrals | compact }}</strong> referrals</div>
     </div>

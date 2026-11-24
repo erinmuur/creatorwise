@@ -881,8 +881,11 @@ A Claude desktop scheduled task, `creatorwise-outreach` (19:00 daily, through
 `~/.claude/scheduled-tasks/creatorwise-outreach/`), finds the threads in
 Superhuman (read-only), judges each reply, runs the tool and uploads. Some of
 the emails also ask for an Announcement grid post by Dec 4: a yes to that
-alone is not an opt-in. First run 2026-11-24, by hand: 58 emailed (all on
-file), 14 opted in. `data/outreach.log` has a line per run.
+alone is not an opt-in. Invitations come in three forms and under several
+subjects (the long email, a short "lining up creators" note, and a short
+"we DMed briefly over Instagram" note to people new to Erin), so the job
+judges each thread by its first message. First run 2026-11-24, by hand: 75
+emailed (all on file), 14 opted in. `data/outreach.log` has a line per run.
 
 ## Payment details
 

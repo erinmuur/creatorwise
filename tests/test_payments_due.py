@@ -226,6 +226,17 @@ class EmailTests(Base):
         self.assertEqual(spec["total"], "$110")
         self.assertIn("Routing #: 021000021", spec["payTo"])
 
+    def test_an_international_invoice_names_the_swift_code(self):
+        d = self.bea.payment_details
+        d.account_number, d.routing_number, d.swift_code = \
+            "GB82WEST12345698765432", None, "DEUTDEFF500"
+        self.bea.payment_method = "intl_ach"
+        db.session.commit()
+        self.assertTrue(self.bea.payment_ready)
+        pay_to = pd.invoice_spec(self.pay(self.bea), 1001, TODAY)["payTo"]
+        self.assertIn("SWIFT: DEUTDEFF500", pay_to)
+        self.assertFalse(any(line.startswith("Routing") for line in pay_to))
+
     def test_the_right_template_and_first_name(self):
         self.assertEqual(pd.first_name(self.pax), "Pax")
         juno_pay = self.pay(self.juno)

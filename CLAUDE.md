@@ -899,8 +899,19 @@ in the same panel and carried back from the live site with the bank fields
 under the one `updated_at`. The invoice importer sets PayPal from "PayPal:
 x@y" or a paypal.me link, and bank transfer when an invoice has both numbers.
 
-`Creator.payment_ready` — a PayPal address for PayPal, otherwise both bank
-numbers — is what decides which of Erin's two payment emails a creator gets.
+A third method, **International ACH Transfer** (`intl_ach`, 2026-11-24, at
+Erin's request), adds a SWIFT code (`PaymentDetails.swift_code`, 8 or 11
+characters). For it the account may be an IBAN (letters and digits, up to
+34) and the routing field takes a foreign bank code without the US checksum;
+its invoice lists the SWIFT code. `swift_code` was the first column added to
+an existing table: `payments.ensure_columns` adds it with an `ALTER TABLE` on
+boot and before `push_data` merges, since `create_all` only makes missing
+tables. A server that predates a column doesn't send it, and the merge leaves
+the Mac's value alone.
+
+`Creator.payment_ready` — a PayPal address for PayPal, an account and SWIFT
+code for an international transfer, otherwise both bank numbers — is what
+decides which of Erin's two payment emails a creator gets.
 
 ## Payments
 

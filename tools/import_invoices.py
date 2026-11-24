@@ -509,7 +509,7 @@ def render(entries):
     labels = [("payment_method", "paid by"), ("payment_handle", "paypal"),
               ("payee_name", "name"), ("address", "address"), ("phone", "phone"),
               ("bank_name", "bank"), ("account_number", "account"), ("routing_number", "routing")]
-    methods = {"bank": "Bank transfer (ACH)", "paypal": "PayPal"}
+    from payments import METHODS as methods
     for e in entries:
         who = f"{e['creator'].name} (matched by {e['how']})" if e["creator"] else "NOT MATCHED"
         lines.append(f"{os.path.basename(e['file'])} -> {who}")

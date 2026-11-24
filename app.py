@@ -61,6 +61,11 @@ app.register_blueprint(datasync.bp)
 db.init_app(app)
 with app.app_context():
     db.create_all()
+    _raw = db.engine.raw_connection()
+    try:
+        payments.ensure_columns(_raw.driver_connection)
+    finally:
+        _raw.close()
 
     # Sample data for the deployed demo. Opt-in only, and only into an empty
     # database — it will never overwrite real data. Turn this off (and wipe the
@@ -357,6 +362,7 @@ def creator_detail(creator_id):
         creator=creator,
         pieces=pieces,
         participations=participations,
+        payment_methods=payments.METHODS,
     )
 
 

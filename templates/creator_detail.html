@@ -191,15 +191,18 @@
       <p class="row-sub pay-note pay-error">Not saved: {{ request.args.get('payment_error') }}.</p>
       {% endif %}
       {% set by_paypal = creator.payment_method == 'paypal' %}
+      {% set abroad = creator.payment_method == 'intl_ach' %}
       <p class="row-sub" style="margin: 0 0 var(--space-12)">
         {%- if by_paypal and creator.payment_handle %}Paid by PayPal — ready to pay
         {%- elif by_paypal %}Paid by PayPal — no PayPal email yet
+        {%- elif abroad and pay and pay.has_international_account %}International bank details on file
+        {%- elif abroad %}International transfer — no account and SWIFT code yet
         {%- elif pay and pay.has_bank_account %}Bank details on file
         {%- elif pay and not pay.is_empty %}Partly filled in — no account and routing number yet
         {%- else %}No payment details yet{% endif -%}
       </p>
       <dl class="kv">
-        <dt>Paid by</dt><dd>{{ 'PayPal' if by_paypal else ('Bank transfer (ACH)' if creator.payment_method == 'bank' else '—') }}</dd>
+        <dt>Paid by</dt><dd>{{ payment_methods.get(creator.payment_method, '—') if creator.payment_method else '—' }}</dd>
         {% if by_paypal %}
         <dt>PayPal</dt><dd>{{ creator.payment_handle or '—' }}</dd>
         {% endif %}
@@ -210,6 +213,9 @@
         <dt>Bank</dt><dd>{{ pay.bank_name if pay and pay.bank_name else '—' }}</dd>
         <dt>Account</dt><dd>{{ pay.masked_account if pay and pay.account_number else '—' }}</dd>
         <dt>Routing</dt><dd>{{ pay.routing_number if pay and pay.routing_number else '—' }}</dd>
+        {% if abroad or (pay and pay.swift_code) %}
+        <dt>SWIFT</dt><dd>{{ pay.swift_code if pay and pay.swift_code else '—' }}</dd>
+        {% endif %}
         {% endif %}
       </dl>
       {% if creator.payment_note %}
@@ -223,6 +229,7 @@
             <select class="field" name="payment_method">
               <option value="" {{ 'selected' if not creator.payment_method }}>—</option>
               <option value="bank" {{ 'selected' if creator.payment_method == 'bank' }}>Bank transfer (ACH)</option>
+              <option value="intl_ach" {{ 'selected' if abroad }}>International ACH Transfer</option>
               <option value="paypal" {{ 'selected' if by_paypal }}>PayPal</option>
             </select>
           </label>
@@ -231,8 +238,9 @@
           <label class="pay-label">Address<textarea class="field" name="address" rows="3">{{ pay.address or '' if pay }}</textarea></label>
           <label class="pay-label">Phone<input class="field" name="phone" value="{{ pay.phone or '' if pay }}"></label>
           <label class="pay-label">Bank name<input class="field" name="bank_name" value="{{ pay.bank_name or '' if pay }}"></label>
-          <label class="pay-label">Account number<input class="field" name="account_number" inputmode="numeric" autocomplete="off" value="{{ pay.account_number or '' if pay }}"></label>
+          <label class="pay-label">Account number (or IBAN)<input class="field" name="account_number" autocomplete="off" value="{{ pay.account_number or '' if pay }}"></label>
           <label class="pay-label">Routing number<input class="field" name="routing_number" inputmode="numeric" autocomplete="off" value="{{ pay.routing_number or '' if pay }}"></label>
+          <label class="pay-label">SWIFT code<input class="field" name="swift_code" autocomplete="off" autocapitalize="characters" maxlength="14" placeholder="for international transfers" value="{{ pay.swift_code or '' if pay }}"></label>
           <button type="submit" class="btn-primary">Save</button>
         </form>
       </details>

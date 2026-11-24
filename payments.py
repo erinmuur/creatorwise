@@ -14,8 +14,22 @@ LIMITS = {"payee_name": 200, "phone": 40, "bank_name": 120, "address": 600}
 # How a creator is paid. Stored on the creator (payment_method /
 # payment_handle, columns that already existed), so adding PayPal needed no
 # migration. A PayPal payout needs only the address.
-METHODS = {"bank": "Bank transfer (ACH)", "paypal": "PayPal"}
+METHODS = {"bank": "Bank transfer (ACH)", "intl_ach": "International ACH Transfer",
+           "paypal": "PayPal"}
 EMAIL = re.compile(r"^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$")
+# SWIFT/BIC: bank (4 letters), country (2 letters), location (2), branch (3, optional).
+SWIFT = re.compile(r"^[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?$")
+
+
+def ensure_columns(conn):
+    """Columns added to payment_details after it was created. create_all
+    makes missing tables, not missing columns, so each is added here, once,
+    on boot and before push_data merges the live site's rows. Nullable,
+    so existing rows are untouched. `conn` is a DB-API connection."""
+    have = {r[1] for r in conn.execute("PRAGMA table_info(payment_details)").fetchall()}
+    if have and "swift_code" not in have:
+        conn.execute("ALTER TABLE payment_details ADD COLUMN swift_code VARCHAR(11)")
+        conn.commit()
 
 
 def digits(value):
@@ -36,11 +50,13 @@ def check(form):
     """(values, errors) from the submitted form. Blank fields are allowed —
     details often arrive a piece at a time — but a number that is filled in
     has to look like one."""
+    method = (form.get("payment_method") or "").strip().lower() or None
+    abroad = method == "intl_ach"
     values = {}
     for field in PaymentDetails.FIELDS:
         raw = (form.get(field) or "").strip()
-        if field in ("account_number", "routing_number"):
-            raw = digits(raw)
+        if field in ("account_number", "routing_number", "swift_code"):
+            raw = digits(raw).upper()
         values[field] = raw or None
 
     errors = []
@@ -48,13 +64,23 @@ def check(form):
         if values[field] and len(values[field]) > limit:
             errors.append(f"{field.replace('_', ' ')} is too long")
     account = values["account_number"]
-    if account and not re.fullmatch(r"\d{4,17}", account):
-        errors.append("account number should be 4–17 digits")
     routing = values["routing_number"]
-    if routing and not routing_ok(routing):
-        errors.append("routing number isn't a valid 9-digit US routing number")
+    if abroad:
+        # Outside the US an account is often an IBAN (letters and digits, up
+        # to 34) and the bank code isn't an ABA number.
+        if account and not re.fullmatch(r"[A-Z0-9]{4,34}", account):
+            errors.append("account number / IBAN should be 4–34 letters and digits")
+        if routing and not re.fullmatch(r"[A-Z0-9]{3,16}", routing):
+            errors.append("routing / bank code should be 3–16 letters and digits")
+    else:
+        if account and not re.fullmatch(r"\d{4,17}", account):
+            errors.append("account number should be 4–17 digits")
+        if routing and not routing_ok(routing):
+            errors.append("routing number isn't a valid 9-digit US routing number")
+    swift = values["swift_code"]
+    if swift and not SWIFT.match(swift):
+        errors.append("SWIFT code should be 8 or 11 letters and digits")
 
-    method = (form.get("payment_method") or "").strip().lower() or None
     if method and method not in METHODS:
         errors.append("unknown payment method")
     paypal = (form.get("paypal_email") or "").strip().lower() or None
@@ -115,6 +141,7 @@ def merge_rows(conn, rows):
 
     ddl = str(CreateTable(PaymentDetails.__table__).compile(dialect=sqlite.dialect()))
     conn.execute(ddl.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1))
+    ensure_columns(conn)
     taken = 0
     for row in rows:
         local = conn.execute(
@@ -128,8 +155,10 @@ def merge_rows(conn, rows):
         mine = (local[0] or "") if local else None
         if local is not None and _when(mine) >= _when(theirs):
             continue
-        cols = list(PaymentDetails.FIELDS) + ["updated_at"]
-        vals = [row.get(f) for f in PaymentDetails.FIELDS] + [_sql_time(theirs)]
+        # A server from before a column existed doesn't send it: leave it be.
+        fields = [f for f in PaymentDetails.FIELDS if f in row]
+        cols = fields + ["updated_at"]
+        vals = [row.get(f) for f in fields] + [_sql_time(theirs)]
         if local is None:
             conn.execute(
                 f"INSERT INTO payment_details (creator_id, {', '.join(cols)}) "

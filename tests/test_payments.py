@@ -27,6 +27,8 @@ from models import Creator, PaymentDetails, db  # noqa: E402
 
 ROUTING = "021000021"        # a published bank routing number, not anybody's account
 ACCOUNT = "000123456789"
+IBAN = "GB82WEST12345698765432"   # the published example IBAN
+SWIFT = "DEUTDEFF500"             # a bank's public BIC, not an account
 
 
 class CheckTests(unittest.TestCase):
@@ -83,7 +85,7 @@ class FormTests(unittest.TestCase):
         self.assertIn("Bank details on file", page)
         # The full number appears only inside the edit form's input.
         self.assertEqual(page.count(ACCOUNT), 1)
-        self.assertIn(f'name="account_number" inputmode="numeric" autocomplete="off" '
+        self.assertIn(f'name="account_number" autocomplete="off" '
                       f'value="{ACCOUNT}"', page)
 
     def test_paid_by_paypal(self):
@@ -114,6 +116,33 @@ class FormTests(unittest.TestCase):
                   routing_number=ROUTING)
         with appmod.app.app_context():
             self.assertTrue(db.session.get(Creator, self.cid).payment_ready)
+
+    def test_international_transfer_needs_account_and_swift(self):
+        r = self.post(csrf_token=self.token(), payment_method="intl_ach",
+                      account_number="gb82 west 1234 5698 7654 32", routing_number="WEST1234")
+        self.assertNotIn("payment_error", r.headers["Location"])   # no US routing check
+        with appmod.app.app_context():
+            c = db.session.get(Creator, self.cid)
+            self.assertEqual(c.payment_details.account_number, IBAN)
+            self.assertFalse(c.payment_ready)                      # no SWIFT yet
+        self.post(csrf_token=self.token(), payment_method="intl_ach", account_number=IBAN,
+                  swift_code="deut de ff 500")
+        with appmod.app.app_context():
+            c = db.session.get(Creator, self.cid)
+            self.assertEqual(c.payment_details.swift_code, SWIFT)
+            self.assertTrue(c.payment_ready)
+        page = self.client.get(f"/creators/{self.cid}").get_data(as_text=True)
+        self.assertIn("International bank details on file", page)
+        self.assertIn('<option value="intl_ach" selected', page)
+        self.assertIn(f"<dt>SWIFT</dt><dd>{SWIFT}</dd>", page)
+
+    def test_a_bad_swift_code_is_refused(self):
+        for bad in ("DEUT", "DEUTDEFF5", "12UTDEFF"):
+            r = self.post(csrf_token=self.token(), payment_method="intl_ach",
+                          account_number=IBAN, swift_code=bad)
+            self.assertIn("SWIFT", r.headers["Location"])
+        r = self.post(csrf_token=self.token(), payment_method="bank", account_number=IBAN)
+        self.assertIn("payment_error=", r.headers["Location"])     # IBANs only abroad
 
     def test_no_token_no_save(self):
         r = self.post(account_number=ACCOUNT, routing_number=ROUTING)
@@ -174,6 +203,23 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(self.banks(), {1: "Mac Bank", 2: "Pax Bank"})
         newer = payments.merge_rows(self.conn, [self.row(1, "Newest", "2026-11-20T08:00:00")])
         self.assertEqual((newer, self.banks()[1]), (1, "Newest"))
+
+    def test_a_swift_code_comes_back_and_an_old_server_leaves_it_alone(self):
+        payments.merge_rows(self.conn, [dict(self.row(1, "B", "2026-11-20T09:00:00"),
+                                             swift_code=SWIFT)])
+        swift = lambda: self.conn.execute(
+            "SELECT swift_code FROM payment_details WHERE creator_id = 1").fetchone()[0]
+        self.assertEqual(swift(), SWIFT)
+        payments.merge_rows(self.conn, [self.row(1, "C", "2026-11-21T09:00:00")])  # no key
+        self.assertEqual(swift(), SWIFT)
+
+    def test_the_column_is_added_to_an_older_table(self):
+        self.conn.execute("CREATE TABLE payment_details (id INTEGER PRIMARY KEY, "
+                          "creator_id INTEGER, bank_name TEXT)")
+        payments.ensure_columns(self.conn)
+        payments.ensure_columns(self.conn)                         # idempotent
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(payment_details)")}
+        self.assertIn("swift_code", cols)
 
     def test_a_paypal_address_set_on_the_server_comes_back(self):
         row = dict(self.row(2, None, "2026-11-20T09:00:00"), account_number=None,

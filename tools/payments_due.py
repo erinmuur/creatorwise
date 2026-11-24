@@ -166,6 +166,11 @@ def invoice_spec(payment, number, issued):
         sender.append(f"Phone: {d.phone}")
     if c.payment_method == "paypal":
         pay_to = [name, f"PayPal: {c.payment_handle}"]
+    elif c.payment_method == "intl_ach":
+        pay_to = [name, f"Bank Name: {d.bank_name or '—'}", f"Account # / IBAN: {d.account_number}",
+                  f"SWIFT: {d.swift_code}"]
+        if d.routing_number:
+            pay_to.append(f"Routing / bank code: {d.routing_number}")
     else:
         pay_to = [name, f"Bank Name: {d.bank_name or '—'}", f"Account #: {d.account_number}",
                   f"Routing #: {d.routing_number}"]

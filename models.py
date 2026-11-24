@@ -155,7 +155,7 @@ class Creator(db.Model):
 
     # How to pay them, coarse. Bank details (account and routing numbers)
     # live in PaymentDetails, below.
-    payment_method = db.Column(db.String(32))      # bank | paypal (payments.METHODS)
+    payment_method = db.Column(db.String(32))      # bank | intl_ach | paypal (payments.METHODS)
     payment_handle = db.Column(db.String(254))
     payment_note = db.Column(db.Text)
 
@@ -226,10 +226,13 @@ class Creator(db.Model):
     @property
     def payment_ready(self):
         """Everything needed to pay them: a PayPal address if they're paid by
-        PayPal, otherwise an account and routing number. Decides which of
-        Erin's two payment emails they get."""
+        PayPal, an account and SWIFT code for an international transfer,
+        otherwise an account and routing number. Decides which of Erin's two
+        payment emails they get."""
         if self.payment_method == "paypal":
             return bool(self.payment_handle)
+        if self.payment_method == "intl_ach":
+            return bool(self.payment_details and self.payment_details.has_international_account)
         return bool(self.payment_details and self.payment_details.has_bank_account)
 
     @property
@@ -1102,17 +1105,23 @@ class PaymentDetails(db.Model):
     bank_name = db.Column(db.String(120))
     account_number = db.Column(db.String(32))
     routing_number = db.Column(db.String(16))
-    updated_at = db.Column(db.DateTime)
+    swift_code = db.Column(db.String(11))    # international transfers; added at boot
+    updated_at = db.Column(db.DateTime)      # by payments.ensure_columns
 
     creator = db.relationship("Creator", back_populates="payment_details")
 
     FIELDS = ("payee_name", "address", "phone", "bank_name",
-              "account_number", "routing_number")
+              "account_number", "routing_number", "swift_code")
 
     @property
     def has_bank_account(self):
         """Enough to pay by bank transfer: both numbers on file."""
         return bool(self.account_number and self.routing_number)
+
+    @property
+    def has_international_account(self):
+        """Enough to pay by international transfer: account (or IBAN) and SWIFT."""
+        return bool(self.account_number and self.swift_code)
 
     @property
     def masked_account(self):

@@ -191,6 +191,20 @@ class CacTests(Base):
         row = self.pay(self.bea)
         self.assertEqual((row.referral_from, row.referrals), (start - timedelta(days=10), 9))
 
+    def test_a_window_moved_to_a_later_post_survives_refresh(self):
+        payments.refresh(self.camp, TODAY)
+        row = self.pay(self.bea)
+        first = row.first_posted_on
+        later = first + timedelta(days=18)
+        row.referral_from, row.referral_to, row.referrals = later, later + timedelta(days=13), None
+        db.session.commit()
+        payments.refresh(self.camp, TODAY)
+        row = self.pay(self.bea)
+        self.assertEqual((row.first_posted_on, row.referral_from), (first, later))
+        self.assertEqual(row.referral_to, later + timedelta(days=13))
+        self.assertEqual(row.due_on, later + timedelta(days=14))   # after the moved window
+        self.assertIsNone(row.referrals)
+
     def test_refresh_leaves_a_not_paid_row_alone(self):
         db.session.add(Payment(creator_id=self.bea.id, campaign_id=self.camp.id,
                                status="not_paid", base_cents=0, referrals=0))

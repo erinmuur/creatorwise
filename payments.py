@@ -252,13 +252,18 @@ def refresh(campaign, today, now=None):
         if first is None:
             undated.append(part.creator.name)
         changed = (row.first_posted_on != first)
-        widened = (not changed and first and row.referral_from and row.referral_from < first)
+        # A window Erin set by hand is kept until the first post itself
+        # moves: widened back for signups that came before the post on file
+        # (2026-11-24), or moved forward to a later post that drove them
+        # (2026-11-25). Payment is due the day after the window closes.
+        by_hand = bool(not changed and first and row.referral_from and row.referral_to
+                       and row.referral_from != first)
         row.first_posted_on = first
-        row.due_on = first + timedelta(days=PAY_AFTER_DAYS) if first else None
-        # A window Erin widened back by hand (signups that came before the
-        # post on file, 2026-11-24) is kept until the first post itself moves.
-        row.referral_from = row.referral_from if widened else first
-        row.referral_to = first + timedelta(days=rule["window_days"] - 1) if first else None
+        if not by_hand:
+            row.referral_from = first
+            row.referral_to = first + timedelta(days=rule["window_days"] - 1) if first else None
+        row.due_on = (max(first + timedelta(days=PAY_AFTER_DAYS), row.referral_to + timedelta(days=1))
+                      if first else None)
         if changed:
             row.referrals = None          # a new window needs a new count
         status = "pending" if row.due_on and row.due_on <= today else "upcoming"

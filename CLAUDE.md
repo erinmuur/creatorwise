@@ -963,8 +963,12 @@ site comes back through `push_data.py` like payment details do.
   (2026-11-24): two creators had signups from sharing their link before
   the post on file (stories, an earlier post), so their windows were set to
   Oct 20 → first post + 13 days and recounted (notes on each `Payment`).
-  `refresh` keeps a `referral_from` earlier than the first post until the
-  first-post date itself changes.
+  It can also **move forward to a later post** (2026-11-25): one
+  creator's first post drew no signups and a later one drew 23 on its
+  first day, so her window is that post's day + 13, and she is due the
+  day after it closes. `refresh` keeps any hand-set window (`referral_from`
+  not the first post) until the first-post date itself changes, and sets
+  `due_on` to the later of first post + 14 and the window's close + 1.
 - The bonus is counted once the window has closed: `referral-sql` writes one
   query over each creator's own window (shared addresses left out), with a
   ROLLUP checksum; `referral-load` refuses a result that doesn't add up.
